@@ -1,0 +1,118 @@
+openapi: 3.1.0
+info:
+  title: ZeroPath API
+  version: 0.1.0
+  description: API for private cross-chain settlement intents, solver quotes, epochs, and proof submission.
+paths:
+  /v1/intents/quote:
+    post:
+      summary: Quote a private settlement intent.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QuoteRequest"
+      responses:
+        "200":
+          description: Solver quotes.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SolverQuote"
+  /v1/intents:
+    post:
+      summary: Submit an opaque private settlement intent.
+      responses:
+        "202":
+          description: Intent accepted.
+  /v1/intents/{intentId}:
+    get:
+      summary: Read anonymized intent status.
+      parameters:
+        - name: intentId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Intent status.
+  /v1/solvers:
+    get:
+      summary: List active solver reputation and marketplace status.
+      responses:
+        "200":
+          description: Active solvers.
+  /v1/epochs/current:
+    get:
+      summary: Return current settlement epoch and batch metadata.
+      responses:
+        "200":
+          description: Current epoch.
+  /v1/merkle-proof/{chain}/{leafIndex}:
+    get:
+      summary: Fetch Merkle inclusion path for source event proof generation.
+      parameters:
+        - name: chain
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: leafIndex
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Merkle proof.
+  /v1/proofs/submit:
+    post:
+      summary: Submit a proof payload for Stellar settlement.
+      responses:
+        "202":
+          description: Proof queued.
+components:
+  schemas:
+    QuoteRequest:
+      type: object
+      required:
+        - token
+        - destinationCommitment
+        - routeCommitment
+        - privacyLevel
+        - deadline
+      properties:
+        token:
+          type: string
+        destinationCommitment:
+          type: string
+        routeCommitment:
+          type: string
+        privacyLevel:
+          type: string
+          enum: [max-privacy, balanced, lowest-fee]
+        deadline:
+          type: integer
+    SolverQuote:
+      type: object
+      required:
+        - solverId
+        - routeCommitment
+        - feeBps
+        - latencySeconds
+        - privacyScore
+      properties:
+        solverId:
+          type: string
+        routeCommitment:
+          type: string
+        feeBps:
+          type: integer
+        latencySeconds:
+          type: integer
+        privacyScore:
+          type: integer
