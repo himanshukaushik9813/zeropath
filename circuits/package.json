@@ -1,0 +1,14 @@
+{
+  "name": "zeropath-circuits",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build": "bash build.sh",
+    "export-vk": "node export-vk-soroban.js"
+  },
+  "dependencies": {
+    "circomlib": "^2.0.5",
+    "snarkjs": "^0.7.5"
+  }
+}

@@ -182,7 +182,10 @@ export const useProtocolStore = create<ProtocolStore>((set, get) => ({
     await ensureStealthIdentity();
     const current = get();
     const solver = current.solverQuotes.find((quote) => quote.id === current.selectedSolverId) ?? current.solverQuotes[0];
-    const artifact = buildProofArtifact(current.intent, current.stealthIdentity, solver.id, epoch);
+
+    // Try real proof generation, fall back to demo artifact
+    const realProofData = await tryGenerateRealProof(0);
+    const artifact = buildProofArtifact(current.intent, current.stealthIdentity, solver.id, epoch, realProofData ?? undefined);
     set({
       proofArtifact: artifact,
       runId: current.runId + 1,
@@ -195,7 +198,10 @@ export const useProtocolStore = create<ProtocolStore>((set, get) => ({
     const current = get();
     const solver = current.solverQuotes.find((quote) => quote.id === current.selectedSolverId) ?? current.solverQuotes[0];
     epoch += 1;
-    const artifact = buildProofArtifact(current.intent, current.stealthIdentity, solver.id, epoch);
+
+    // Try real proof generation, fall back to demo artifact
+    const realProofData = await tryGenerateRealProof(0);
+    const artifact = buildProofArtifact(current.intent, current.stealthIdentity, solver.id, epoch, realProofData ?? undefined);
     set({
       proofArtifact: artifact,
       runId: current.runId + 1,
@@ -239,7 +245,12 @@ function deriveState({
   const preferred = solverQuotes.find((quote) => quote.id === preferredSolverId && quote.complianceSupport.includes(intent.complianceMode));
   const solver = preferred ?? chooseSolver(intent, solverQuotes);
   const proofArtifact = artifact
-    ? buildProofArtifact(intent, identity, solver.id, epoch)
+    ? buildProofArtifact(intent, identity, solver.id, epoch,
+        artifact.realProof ? {
+          proof: artifact.realProof,
+          publicSignals: artifact.realPublicSignals ?? [],
+          sorobanEncoded: artifact.sorobanEncoded,
+        } : undefined)
     : artifact;
 
   return {
@@ -293,5 +304,105 @@ function sanitizeIntent(intent: RouterIntent): RouterIntent {
     ...intent,
     amount: Math.max(1, Math.min(10_000_000, Number(intent.amount) || defaultIntent.amount)),
     destination,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Real ZK proof generation via snarkjs + relayer
+// ---------------------------------------------------------------------------
+
+const RELAYER_URL = "http://localhost:8787";
+const CIRCUIT_WASM_PATH = "/circuits/private_settlement.wasm";
+const CIRCUIT_ZKEY_PATH = "/circuits/private_settlement_final.zkey";
+
+type RealProofData = {
+  proof: { pi_a: string[]; pi_b: string[][]; pi_c: string[] };
+  publicSignals: string[];
+  sorobanEncoded: { a: string; b: string; c: string; publicInputs: string[] };
+};
+
+/**
+ * Attempt to generate a real Groth16 proof using the relayer's demo secrets
+ * and snarkjs running in the browser.
+ * Returns null if the relayer is unreachable or circuit artifacts are missing.
+ */
+async function tryGenerateRealProof(leafIndex: number): Promise<RealProofData | null> {
+  try {
+    // 1. Fetch demo secrets from relayer
+    const secretsRes = await fetch(`${RELAYER_URL}/v1/demo-secrets`);
+    if (!secretsRes.ok) return null;
+    const { secrets } = await secretsRes.json();
+    const demo = secrets[leafIndex];
+    if (!demo) return null;
+
+    // 2. Fetch Merkle proofs for source and batch trees
+    const [sourceRes, batchRes] = await Promise.all([
+      fetch(`${RELAYER_URL}/v1/merkle-proof/source/${leafIndex}`),
+      fetch(`${RELAYER_URL}/v1/merkle-proof/batch/${leafIndex}`),
+    ]);
+    if (!sourceRes.ok || !batchRes.ok) return null;
+    const sourceProof = await sourceRes.json();
+    const batchProof = await batchRes.json();
+
+    // 3. Build circuit inputs
+    const circuitInputs = {
+      batch_root: demo.batchRoot,
+      source_event_root: demo.sourceEventRoot,
+      nullifier_hash: demo.nullifierHash,
+      destination_commitment: demo.destinationCommitment,
+      asset_id: demo.assetId,
+      epoch: demo.epoch,
+      secret: demo.secret,
+      amount: demo.amount,
+      route_salt: demo.routeSalt,
+      receiver_view_key: demo.receiverViewKey,
+      source_event_path: sourceProof.path,
+      source_event_indices: sourceProof.indices,
+      batch_path: batchProof.path,
+      batch_indices: batchProof.indices,
+    };
+
+    // 4. Generate proof with snarkjs in the browser
+    console.log("[ZeroPath] Generating Groth16 proof in browser...");
+    const snarkjs = await import("snarkjs");
+    const { proof, publicSignals } = await snarkjs.groth16.fullProve(
+      circuitInputs,
+      CIRCUIT_WASM_PATH,
+      CIRCUIT_ZKEY_PATH
+    );
+    console.log("[ZeroPath] Proof generated successfully!", { publicSignals });
+
+    // 5. Encode for Soroban
+    const sorobanEncoded = encodeSorobanProof(proof, publicSignals);
+
+    return {
+      proof: { pi_a: proof.pi_a, pi_b: proof.pi_b, pi_c: proof.pi_c },
+      publicSignals,
+      sorobanEncoded,
+    };
+  } catch (error) {
+    console.warn("[ZeroPath] Real proof generation failed, using demo artifact:", error);
+    return null;
+  }
+}
+
+function fieldToHex32(decimalString: string): string {
+  const n = BigInt(decimalString);
+  return n.toString(16).padStart(64, "0");
+}
+
+function encodeSorobanProof(
+  proof: { pi_a: string[]; pi_b: string[][]; pi_c: string[] },
+  publicSignals: string[]
+) {
+  return {
+    a: fieldToHex32(proof.pi_a[0]) + fieldToHex32(proof.pi_a[1]),
+    b:
+      fieldToHex32(proof.pi_b[0][1]) +
+      fieldToHex32(proof.pi_b[0][0]) +
+      fieldToHex32(proof.pi_b[1][1]) +
+      fieldToHex32(proof.pi_b[1][0]),
+    c: fieldToHex32(proof.pi_c[0]) + fieldToHex32(proof.pi_c[1]),
+    publicInputs: publicSignals.map(fieldToHex32),
   };
 }

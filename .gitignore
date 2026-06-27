@@ -6,3 +6,12 @@ dist/
 .env
 .env.*
 !.env.example
+
+# Circuit build artifacts (regenerate with: cd circuits && bash build.sh)
+circuits/build/pot*.ptau
+circuits/build/*.r1cs
+circuits/build/*.sym
+circuits/build/private_settlement_0000.zkey
+
+# Soroban contract build
+contracts/stellar/settlement/target/

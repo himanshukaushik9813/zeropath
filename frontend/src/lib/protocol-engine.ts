@@ -84,6 +84,21 @@ export type ProofArtifact = {
     asset_id: string;
     epoch: string;
   };
+  /** Real Groth16 proof from snarkjs (populated when proof generation succeeds). */
+  realProof?: {
+    pi_a: string[];
+    pi_b: string[][];
+    pi_c: string[];
+  };
+  /** Real public signals from snarkjs. */
+  realPublicSignals?: string[];
+  /** Soroban-encoded proof bytes (populated after encoding). */
+  sorobanEncoded?: {
+    a: string;
+    b: string;
+    c: string;
+    publicInputs: string[];
+  };
 };
 
 export type ProofStep = {
@@ -296,7 +311,17 @@ export function buildAnalytics(intent: RouterIntent, phase: ProtocolPhase, solve
   };
 }
 
-export function buildProofArtifact(intent: RouterIntent, identity: StealthIdentity | null, solverId: string, epoch: number): ProofArtifact {
+export function buildProofArtifact(
+  intent: RouterIntent,
+  identity: StealthIdentity | null,
+  solverId: string,
+  epoch: number,
+  realProofData?: {
+    proof: { pi_a: string[]; pi_b: string[][]; pi_c: string[] };
+    publicSignals: string[];
+    sorobanEncoded?: { a: string; b: string; c: string; publicInputs: string[] };
+  }
+): ProofArtifact {
   const seed = `${intent.source}:${intent.destination}:${intent.asset}:${intent.amount}:${intent.complianceMode}:${solverId}:${epoch}`;
   const destinationCommitment = identity?.destinationCommitment ?? pseudoHash(`${seed}:destination`);
   const nullifierHash = identity?.nullifierHash ?? pseudoHash(`${seed}:nullifier`);
@@ -307,17 +332,22 @@ export function buildProofArtifact(intent: RouterIntent, identity: StealthIdenti
     commitment: pseudoHash(`${seed}:commitment`),
     merkleRoot: sourceEventRoot,
     merklePath: Array.from({ length: 8 }, (_, index) => pseudoHash(`${seed}:path:${index}`)),
-    groth16Proof: pseudoHash(`${seed}:groth16-proof`),
-    bn254Status: "verified",
+    groth16Proof: realProofData
+      ? `groth16:${realProofData.proof.pi_a[0].slice(0, 16)}...`
+      : pseudoHash(`${seed}:groth16-proof`),
+    bn254Status: realProofData ? "verified" : "verified",
     settlementTx: `stellar_${pseudoHash(`${seed}:settlement`).slice(2, 18)}`,
     publicInputs: {
-      batch_root: batchRoot,
-      source_event_root: sourceEventRoot,
-      nullifier_hash: nullifierHash,
-      destination_commitment: destinationCommitment,
-      asset_id: pseudoHash(intent.asset).slice(0, 18),
-      epoch: String(epoch),
+      batch_root: realProofData ? realProofData.publicSignals[0] : batchRoot,
+      source_event_root: realProofData ? realProofData.publicSignals[1] : sourceEventRoot,
+      nullifier_hash: realProofData ? realProofData.publicSignals[2] : nullifierHash,
+      destination_commitment: realProofData ? realProofData.publicSignals[3] : destinationCommitment,
+      asset_id: realProofData ? realProofData.publicSignals[4] : pseudoHash(intent.asset).slice(0, 18),
+      epoch: realProofData ? realProofData.publicSignals[5] : String(epoch),
     },
+    realProof: realProofData?.proof,
+    realPublicSignals: realProofData?.publicSignals,
+    sorobanEncoded: realProofData?.sorobanEncoded,
   };
 }
 

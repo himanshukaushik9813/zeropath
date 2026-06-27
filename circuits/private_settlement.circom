@@ -10,18 +10,17 @@ template MerklePath(levels) {
 
     component hashers[levels];
     signal current[levels + 1];
+    signal selector[levels];
     current[0] <== leaf;
 
     for (var i = 0; i < levels; i++) {
         hashers[i] = Poseidon(2);
 
-        signal left;
-        signal right;
-        left <== current[i] * (1 - pathIndices[i]) + pathElements[i] * pathIndices[i];
-        right <== pathElements[i] * (1 - pathIndices[i]) + current[i] * pathIndices[i];
-
-        hashers[i].inputs[0] <== left;
-        hashers[i].inputs[1] <== right;
+        // Mux: if pathIndices[i]==0 => left=current, right=sibling
+        //       if pathIndices[i]==1 => left=sibling, right=current
+        selector[i] <== pathIndices[i] * (pathElements[i] - current[i]);
+        hashers[i].inputs[0] <== current[i] + selector[i];
+        hashers[i].inputs[1] <== pathElements[i] - selector[i];
         current[i + 1] <== hashers[i].out;
     }
 
