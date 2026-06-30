@@ -99,6 +99,8 @@ export type ProofArtifact = {
     c: string;
     publicInputs: string[];
   };
+  /** True when using demo/mock data instead of a real Groth16 proof. */
+  demoMode?: boolean;
 };
 
 export type ProofStep = {
@@ -335,7 +337,8 @@ export function buildProofArtifact(
     groth16Proof: realProofData
       ? `groth16:${realProofData.proof.pi_a[0].slice(0, 16)}...`
       : pseudoHash(`${seed}:groth16-proof`),
-    bn254Status: realProofData ? "verified" : "verified",
+    bn254Status: realProofData ? "verified" : "pending",
+    demoMode: !realProofData,
     settlementTx: `stellar_${pseudoHash(`${seed}:settlement`).slice(2, 18)}`,
     publicInputs: {
       batch_root: realProofData ? realProofData.publicSignals[0] : batchRoot,

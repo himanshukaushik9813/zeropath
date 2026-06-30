@@ -311,7 +311,7 @@ function sanitizeIntent(intent: RouterIntent): RouterIntent {
 // Real ZK proof generation via snarkjs + relayer
 // ---------------------------------------------------------------------------
 
-const RELAYER_URL = "http://localhost:8787";
+const RELAYER_URL = process.env.NEXT_PUBLIC_RELAYER_URL ?? "http://localhost:8787";
 const CIRCUIT_WASM_PATH = "/circuits/private_settlement.wasm";
 const CIRCUIT_ZKEY_PATH = "/circuits/private_settlement_final.zkey";
 
@@ -381,7 +381,8 @@ async function tryGenerateRealProof(leafIndex: number): Promise<RealProofData | 
       sorobanEncoded,
     };
   } catch (error) {
-    console.warn("[ZeroPath] Real proof generation failed, using demo artifact:", error);
+    console.info("[ZeroPath] Real proof generation unavailable — using demo artifact. This is expected if the relayer is not running.");
+    console.warn("[ZeroPath] Underlying error:", error);
     return null;
   }
 }

@@ -6,5 +6,8 @@
   "main": "src/index.ts",
   "dependencies": {
     "snarkjs": "^0.7.5"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0"
   }
 }

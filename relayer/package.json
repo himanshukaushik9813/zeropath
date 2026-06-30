@@ -8,5 +8,9 @@
   },
   "dependencies": {
     "circomlibjs": "^0.1.7"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "@types/node": "^22.0.0"
   }
 }

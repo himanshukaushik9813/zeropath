@@ -249,7 +249,7 @@ async function main() {
     if (request.method === "GET" && url.pathname.startsWith("/v1/merkle-proof/source/")) {
       const parts = url.pathname.split("/");
       const leafIndex = Number(parts[parts.length - 1]);
-      if (isNaN(leafIndex) || leafIndex < 0 || leafIndex >= sourceTree.leaves.length) {
+      if (isNaN(leafIndex) || leafIndex < 0 || !sourceTree.leaves.has(leafIndex)) {
         return json(response, 200, { root: "0", path: [], indices: [], pending: true });
       }
       return json(response, 200, getMerkleProof(sourceTree, leafIndex));
@@ -259,7 +259,7 @@ async function main() {
     if (request.method === "GET" && url.pathname.startsWith("/v1/merkle-proof/batch/")) {
       const parts = url.pathname.split("/");
       const leafIndex = Number(parts[parts.length - 1]);
-      if (isNaN(leafIndex) || leafIndex < 0 || leafIndex >= batchTree.leaves.length) {
+      if (isNaN(leafIndex) || leafIndex < 0 || !batchTree.leaves.has(leafIndex)) {
         return json(response, 200, { root: "0", path: [], indices: [], pending: true });
       }
       return json(response, 200, getMerkleProof(batchTree, leafIndex));
@@ -289,6 +289,9 @@ async function main() {
 
     // Demo secrets endpoint (hackathon only — exposes pre-seeded private inputs)
     if (request.method === "GET" && url.pathname === "/v1/demo-secrets") {
+      if (process.env.ZEROPATH_DEMO_MODE !== "true") {
+        return json(response, 404, { error: "not_found" });
+      }
       const enriched = demoSecrets.map((demo) => {
         const secret = BigInt(demo.secret);
         const amount = BigInt(demo.amount);

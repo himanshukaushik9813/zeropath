@@ -307,7 +307,7 @@ impl ZeroPathSettlement {
     }
 
     /// Negate a G1 point by computing (x, p - y) where p is the BN254 base field prime.
-    fn negate_g1(env: &Env, point: &BytesN<64>) -> Bn254G1Affine {
+    pub(crate) fn negate_g1(env: &Env, point: &BytesN<64>) -> Bn254G1Affine {
         let point_bytes = point.to_array();
 
         // Extract x (first 32 bytes) and y (last 32 bytes)
@@ -381,3 +381,6 @@ impl ZeroPathSettlement {
         }
     }
 }
+
+#[cfg(test)]
+mod test;
