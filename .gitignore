@@ -13,5 +13,18 @@ circuits/build/*.r1cs
 circuits/build/*.sym
 circuits/build/private_settlement_0000.zkey
 
+# Generated proof payload (regenerate with: node circuits/gen-settle-payload.mjs)
+circuits/build/settle-payload.json
+# Generated Sepolia commitments (regenerate with: node circuits/gen-eth-commitments.mjs)
+circuits/build/eth-commitments.json
+
 # Soroban contract build
 contracts/stellar/settlement/target/
+
+# Foundry (Ethereum Sepolia escrow) build artifacts
+contracts/ethereum/out/
+contracts/ethereum/cache/
+contracts/ethereum/broadcast/
+
+# Soroban test snapshots (regenerated on every `cargo test`)
+contracts/stellar/settlement/test_snapshots/

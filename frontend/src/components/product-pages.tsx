@@ -8,10 +8,13 @@ import { motion } from "framer-motion";
 import gsap from "gsap";
 import Lenis from "lenis";
 import {
+  AlertTriangle,
   ArrowRight,
   Brain,
   CheckCircle2,
   Cpu,
+  ExternalLink,
+  Loader2,
   LockKeyhole,
   Play,
   RotateCcw,
@@ -39,7 +42,7 @@ import {
   type RouteLeg,
   type SolverQuote,
 } from "@/lib/protocol-engine";
-import { useProtocolStore } from "@/store/protocol-store";
+import { useProtocolStore, type DemoStage } from "@/store/protocol-store";
 
 const SettlementGlobe3D = dynamic(
   () => import("@/components/settlement-globe-3d").then((mod) => mod.SettlementGlobe3D),
@@ -82,17 +85,21 @@ export function HomeExperience() {
           <p className="eyebrow">Private Cross-Chain Settlement Infrastructure</p>
           <h1>Route Intent. Prove Privacy. Settle on Stellar.</h1>
           <p>
-            ZeroPath is a protocol operating system for private value transfer. Users describe the outcome; Stellar
-            verifies portable BN254 proofs; solvers settle without exposing sender, receiver, route, or amount.
+            ZeroPath moves value across chains privately. Instead of a public bridge, your transfer becomes a
+            zero-knowledge proof — and a Stellar smart contract verifies that proof on-chain before releasing funds,
+            without ever revealing the sender, receiver, route, or amount.
           </p>
           <div className="hero-actions">
-            <Link className="primary-button" href="/operate">
-              Launch App <ArrowRight size={15} />
+            <Link className="primary-button" href="/operate?run=1">
+              Run the live demo <ArrowRight size={15} />
             </Link>
             <Link className="secondary-button" href="/proof">
-              View Proof Engine
+              How the proof works
             </Link>
           </div>
+          <p className="hero-footnote">
+            The demo generates a real Groth16 proof in your browser and verifies it on Stellar testnet — no slideware.
+          </p>
         </div>
         <div className="hero-visual-panel">
           <SettlementGlobe3D
@@ -140,8 +147,18 @@ export function OperateExperience() {
   const parsePrompt = useProtocolStore((state) => state.parsePrompt);
   const setPrompt = useProtocolStore((state) => state.setPrompt);
   const updateIntent = useProtocolStore((state) => state.updateIntent);
+  const running = useProtocolStore((state) => state.demoStatus.running);
   const solver = useActiveSolver();
   const routePath = getRoutePath(route, intent.destination);
+
+  // Guided one-click: arriving via /operate?run=1 (the Home "Run live demo"
+  // button) kicks off the full flow automatically.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("run") === "1") {
+      void useProtocolStore.getState().executeTransfer();
+    }
+  }, []);
 
   return (
     <div className="hq-route operate-route">
@@ -162,13 +179,25 @@ export function OperateExperience() {
             value={prompt}
           />
           <div className="button-row">
-            <button className="primary-button" onClick={parsePrompt} type="button">
+            <button className="secondary-button" onClick={parsePrompt} type="button" disabled={running}>
               <Sparkles size={15} /> Parse Intent
             </button>
-            <button className="secondary-button" onClick={() => void executeTransfer()} type="button">
-              <Play size={15} /> Execute Settlement
+            <button className="primary-button" onClick={() => void executeTransfer()} type="button" disabled={running}>
+              {running ? (
+                <>
+                  <Loader2 className="spin" size={15} /> Running…
+                </>
+              ) : (
+                <>
+                  <Play size={15} /> Execute Settlement
+                </>
+              )}
             </button>
           </div>
+          <p className="button-hint">
+            One click runs the whole flow: a real zero-knowledge proof is generated in your browser, then verified on the
+            Stellar contract before funds move.
+          </p>
         </div>
         <div className="router-intelligence">
           <PathVisual routePath={routePath} />
@@ -186,6 +215,7 @@ export function OperateExperience() {
           </div>
         </div>
       </section>
+      <SettlementStatus />
       <section className="route-control-band page-reveal">
         <SelectField label="Source" onChange={(value) => updateIntent({ source: value as ChainId })} options={chains.map((chain) => [chain.id, chain.name])} value={intent.source} />
         <SelectField label="Destination" onChange={(value) => updateIntent({ destination: value as ChainId })} options={chains.map((chain) => [chain.id, chain.name])} value={intent.destination} />
@@ -211,6 +241,7 @@ export function ProofExperience() {
   const proofSteps = useProtocolStore((state) => state.proofSteps);
   const stealthIdentity = useProtocolStore((state) => state.stealthIdentity);
   const phase = useProtocolStore((state) => state.phase);
+  const running = useProtocolStore((state) => state.demoStatus.running);
 
   return (
     <div className="hq-route proof-route">
@@ -225,8 +256,16 @@ export function ProofExperience() {
           <p className="eyebrow">Stellar Verification Layer</p>
           <h2>{proofArtifact?.bn254Status === "verified" ? "BN254 verified." : "Generate the proof."}</h2>
           <p>Commitment, Merkle root, Groth16 digest, nullifier, destination commitment, and epoch are exposed as public inputs only.</p>
-          <button className="primary-button" onClick={() => void generateProof()} type="button">
-            <Zap size={15} /> Generate Proof
+          <button className="primary-button" onClick={() => void generateProof()} type="button" disabled={running}>
+            {running ? (
+              <>
+                <Loader2 className="spin" size={15} /> Generating…
+              </>
+            ) : (
+              <>
+                <Zap size={15} /> Generate Proof
+              </>
+            )}
           </button>
         </div>
         <div className="proof-visual">
@@ -237,10 +276,23 @@ export function ProofExperience() {
           <Signal label="Commitment" mono value={proofArtifact ? shorten(proofArtifact.commitment) : "pending"} />
           <Signal label="Merkle root" mono value={proofArtifact ? shorten(proofArtifact.merkleRoot) : "pending"} />
           <Signal label="Groth16 proof" mono value={proofArtifact ? shorten(proofArtifact.groth16Proof) : "pending"} />
+          <Signal
+            label="On-chain verify"
+            mono
+            value={
+              proofArtifact?.onChain
+                ? proofArtifact.onChain.txHash
+                  ? shorten(proofArtifact.onChain.txHash)
+                  : "verified on Stellar"
+                : "run Execute to verify"
+            }
+            href={proofArtifact?.onChain?.explorer ?? undefined}
+          />
           <Signal label="Destination commitment" mono value={stealthIdentity ? shorten(stealthIdentity.destinationCommitment) : "pending"} />
           <Signal label="Nullifier" mono value={stealthIdentity ? shorten(stealthIdentity.nullifierHash) : "pending"} />
         </div>
       </section>
+      <SettlementStatus />
       <section className="proof-lifecycle page-reveal">
         {proofSteps.map((step, index) => (
           <motion.article className={`lifecycle-card ${step.status}`} key={step.id} animate={{ opacity: step.status === "idle" ? 0.42 : 1 }}>
@@ -551,17 +603,78 @@ function SelectField({ label, onChange, options, value }: { label: string; onCha
   );
 }
 
-function Signal({ label, mono, value }: { label: string; mono?: boolean; value: string }) {
+function Signal({ label, mono, value, href }: { label: string; mono?: boolean; value: string; href?: string }) {
   return (
     <div className={mono ? "signal mono" : "signal"}>
       <span>{label}</span>
-      <strong>{value}</strong>
+      {href ? (
+        <strong>
+          <a href={href} target="_blank" rel="noreferrer">{value}</a>
+        </strong>
+      ) : (
+        <strong>{value}</strong>
+      )}
     </div>
   );
 }
 
 function SceneFallback({ label }: { label: string }) {
   return <div className="scene-fallback">{label}</div>;
+}
+
+const STAGE_LABEL: Record<DemoStage, string> = {
+  idle: "Ready",
+  proving: "Generating proof",
+  settling: "Verifying on Stellar",
+  done: "Complete",
+  error: "Interrupted",
+};
+
+/**
+ * Live, plain-language readout of the demo: what is happening right now, whether
+ * the proof is real, and — once verified on Stellar — a link to the transaction.
+ * This is the "is it working / did it really work?" surface for judges.
+ */
+function SettlementStatus() {
+  const status = useProtocolStore((state) => state.demoStatus);
+  const headline =
+    status.stage === "done"
+      ? status.onChain
+        ? "Settled on Stellar"
+        : status.isRealProof
+          ? "Proof verified"
+          : "Demo complete"
+      : STAGE_LABEL[status.stage];
+
+  return (
+    <section className="settlement-status page-reveal" data-stage={status.stage} aria-live="polite">
+      <div className="status-headline">
+        {status.running ? (
+          <Loader2 className="spin" size={16} />
+        ) : status.stage === "done" ? (
+          <CheckCircle2 size={16} />
+        ) : status.stage === "error" ? (
+          <AlertTriangle size={16} />
+        ) : (
+          <ShieldCheck size={16} />
+        )}
+        <strong>{headline}</strong>
+        {status.isRealProof ? <span className="status-chip real">Real Groth16 proof</span> : null}
+        {status.onChain ? (
+          <span className="status-chip onchain">
+            <ShieldCheck size={12} /> Verified on Stellar
+          </span>
+        ) : null}
+      </div>
+      <p className="status-message">{status.message}</p>
+      {status.onChain?.explorer ? (
+        <a className="status-tx" href={status.onChain.explorer} target="_blank" rel="noreferrer">
+          {status.onChain.txHash ? "View transaction on Stellar Explorer" : "View contract on Stellar Explorer"}
+          <ExternalLink size={13} />
+        </a>
+      ) : null}
+    </section>
+  );
 }
 
 function useActiveSolver() {

@@ -1,7 +1,18 @@
 import { createServer } from "node:http";
 
+// Load relayer/.env (contract id, payout config) when present. Optional — the
+// relayer runs fine without it, just with on-chain settlement disabled.
+try {
+  process.loadEnvFile();
+} catch {
+  // no .env file — that's fine
+}
+
 // @ts-ignore — circomlibjs has no TS types
 import { buildPoseidon } from "circomlibjs";
+
+import { submitSettle, StellarConfigError, type SettlePayload } from "./stellar.ts";
+import { fetchOnchainCommitments } from "./ethereum.ts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -172,6 +183,14 @@ let sourceTree: SparseMerkleTree;
 let batchTree: SparseMerkleTree;
 const events: SourceEvent[] = [];
 
+// Provenance of the source tree: real Ethereum deposits vs. simulated demo data.
+let sourceProvenance: {
+  mode: "ethereum-sepolia" | "demo";
+  escrow: string | null;
+  rpc: string | null;
+  leafCount: number;
+} = { mode: "demo", escrow: null, rpc: null, leafCount: 0 };
+
 async function seedDemoData() {
   await initPoseidon();
 
@@ -210,8 +229,43 @@ async function seedDemoData() {
     });
   }
 
+  // If a Sepolia escrow is configured, build the SOURCE tree from real on-chain
+  // deposits instead of the simulated demo leaves (the real cross-chain bridge).
+  let finalSourceEntries = sourceEntries;
+  try {
+    const onchain = await fetchOnchainCommitments();
+    if (onchain && onchain.commitments.length > 0) {
+      finalSourceEntries = onchain.commitments.map((value, index) => ({ index, value }));
+      sourceProvenance = {
+        mode: "ethereum-sepolia",
+        escrow: onchain.escrow,
+        rpc: onchain.rpc,
+        leafCount: onchain.commitments.length,
+      };
+      // Sanity check: warn if on-chain commitments don't match the demo leaves
+      // (which would mean browser proofs for demo secrets won't be in the tree).
+      const demoMatch = sourceEntries.every(
+        (entry, i) => onchain.commitments[i] === entry.value
+      );
+      console.log(`Source: ${onchain.commitments.length} REAL deposits from Sepolia escrow ${onchain.escrow}`);
+      if (!demoMatch) {
+        console.warn(
+          "  ⚠ on-chain commitments differ from demo leaves — proofs must use the depositors' own secrets."
+        );
+      } else {
+        console.log("  ✓ on-chain commitments match the demo leaves — demo proofs will verify.");
+      }
+    } else {
+      sourceProvenance = { mode: "demo", escrow: null, rpc: null, leafCount: sourceEntries.length };
+      console.log("Source: simulated demo leaves (set ZEROPATH_ETH_RPC + ZEROPATH_ETH_ESCROW for the real Sepolia bridge).");
+    }
+  } catch (error) {
+    sourceProvenance = { mode: "demo", escrow: null, rpc: null, leafCount: sourceEntries.length };
+    console.warn("Source: Sepolia read failed, falling back to demo leaves:", error instanceof Error ? error.message : error);
+  }
+
   console.log("Building source event sparse Merkle tree (depth 32)...");
-  sourceTree = buildSparseMerkleTree(sourceEntries);
+  sourceTree = buildSparseMerkleTree(finalSourceEntries);
   console.log(`  Source root: ${sourceTree.root.toString()}`);
 
   console.log("Building batch sparse Merkle tree (depth 32)...");
@@ -314,12 +368,48 @@ async function main() {
       return json(response, 200, { secrets: enriched });
     }
 
+    // Source provenance — is the source tree backed by real Sepolia deposits?
+    if (request.method === "GET" && url.pathname === "/v1/source-info") {
+      return json(response, 200, {
+        ...sourceProvenance,
+        sourceEventRoot: sourceTree.root.toString(),
+        explorer: sourceProvenance.escrow
+          ? `https://sepolia.etherscan.io/address/${sourceProvenance.escrow}`
+          : null,
+      });
+    }
+
     // Roots endpoint — returns current tree roots for contract initialization
     if (request.method === "GET" && url.pathname === "/v1/roots") {
       return json(response, 200, {
         sourceEventRoot: sourceTree.root.toString(),
         batchRoot: batchTree.root.toString(),
       });
+    }
+
+    // Submit a browser/SDK-generated proof to the settlement contract on-chain.
+    // Body: { publicInputs: {...5 hex...}, epoch: number, proof: { a, b, c } }
+    if (request.method === "POST" && url.pathname === "/v1/settle") {
+      let payload: SettlePayload;
+      try {
+        payload = JSON.parse(await readBody(request)) as SettlePayload;
+      } catch {
+        return json(response, 400, { error: "invalid_json" });
+      }
+      try {
+        const result = await submitSettle(payload);
+        return json(response, 200, result);
+      } catch (error) {
+        if (error instanceof StellarConfigError) {
+          // Misconfiguration / bad input — the browser should surface this.
+          return json(response, 400, { error: "settle_unavailable", detail: error.message });
+        }
+        console.error("[settle] on-chain submission failed:", error);
+        return json(response, 502, {
+          error: "settle_failed",
+          detail: error instanceof Error ? error.message : String(error),
+        });
+      }
     }
 
     return json(response, 404, { error: "not_found" });
@@ -333,13 +423,30 @@ async function main() {
     console.log(`  GET /v1/merkle-proof/batch/{leafIndex}`);
     console.log(`  GET /v1/events`);
     console.log(`  GET /v1/roots`);
+    console.log(`  GET /v1/source-info  (real Sepolia deposits vs demo)`);
     console.log(`  GET /v1/demo-secrets`);
+    console.log(`  POST /v1/settle   (submits a proof to the Stellar contract)`);
   });
 }
 
 function json(response: import("node:http").ServerResponse, status: number, body: unknown) {
   response.writeHead(status, { "content-type": "application/json" });
   response.end(JSON.stringify(body));
+}
+
+function readBody(request: import("node:http").IncomingMessage): Promise<string> {
+  return new Promise((resolve, reject) => {
+    let data = "";
+    request.on("data", (chunk) => {
+      data += chunk;
+      if (data.length > 1_000_000) {
+        reject(new Error("request body too large"));
+        request.destroy();
+      }
+    });
+    request.on("end", () => resolve(data));
+    request.on("error", reject);
+  });
 }
 
 main().catch((error) => {

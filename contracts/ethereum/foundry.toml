@@ -1,0 +1,10 @@
+# Foundry config for the ZeroPath Sepolia source-chain escrow.
+# Only the `sepolia/` dir is compiled — the other .sol files here are legacy
+# design artifacts (ERC20/bucket escrow) not used by the live bridge.
+[profile.default]
+src = "sepolia"
+out = "out"
+libs = ["lib"]
+solc = "0.8.24"
+optimizer = true
+optimizer_runs = 200

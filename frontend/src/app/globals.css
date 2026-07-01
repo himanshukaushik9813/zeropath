@@ -2350,3 +2350,176 @@ a {
     min-height: 320px;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Live settlement status (demo feedback) + button loading/disabled states
+   --------------------------------------------------------------------------- */
+
+@keyframes zp-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spin {
+  animation: zp-spin 0.9s linear infinite;
+}
+
+.primary-button:disabled,
+.secondary-button:disabled,
+.ghost-button:disabled {
+  opacity: 0.62;
+  cursor: progress;
+}
+
+.button-hint {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.hero-footnote {
+  margin: 14px 0 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--faint);
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 11px;
+  letter-spacing: 0.03em;
+}
+
+.settlement-status {
+  position: relative;
+  margin-top: 12px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: 16px 18px 16px 20px;
+}
+
+/* Left accent bar reflects the current stage. */
+.settlement-status::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--line-strong);
+  transition: background 0.3s ease;
+}
+
+.settlement-status[data-stage="proving"]::before,
+.settlement-status[data-stage="settling"]::before {
+  background: var(--orange);
+  animation: zp-status-pulse 1.4s ease-in-out infinite;
+}
+
+.settlement-status[data-stage="done"]::before {
+  background: var(--green);
+}
+
+.settlement-status[data-stage="error"]::before {
+  background: #ff6b6b;
+}
+
+@keyframes zp-status-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.status-headline {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.status-headline > svg {
+  color: var(--muted);
+}
+
+.settlement-status[data-stage="proving"] .status-headline > svg,
+.settlement-status[data-stage="settling"] .status-headline > svg {
+  color: var(--orange);
+}
+
+.settlement-status[data-stage="done"] .status-headline > svg {
+  color: var(--green);
+}
+
+.settlement-status[data-stage="error"] .status-headline > svg {
+  color: #ff6b6b;
+}
+
+.status-headline strong {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  padding: 3px 10px;
+  color: var(--muted);
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 10px;
+  font-weight: 740;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.status-chip.real {
+  border-color: rgba(255, 139, 61, 0.4);
+  color: var(--orange);
+}
+
+.status-chip.onchain {
+  border-color: rgba(126, 231, 135, 0.42);
+  color: var(--green);
+}
+
+.status-message {
+  margin: 9px 0 0;
+  max-width: 74ch;
+  color: rgba(247, 248, 248, 0.74);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+.status-tx {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 11px;
+  color: var(--green);
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 12px;
+  font-weight: 680;
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+}
+
+.status-tx:hover {
+  border-bottom-color: rgba(126, 231, 135, 0.5);
+}
+
+.signal a {
+  color: inherit;
+  text-decoration: none;
+  border-bottom: 1px solid rgba(255, 139, 61, 0.45);
+}
+
+.signal a:hover {
+  border-bottom-color: var(--orange);
+}

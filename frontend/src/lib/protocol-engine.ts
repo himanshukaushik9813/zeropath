@@ -99,6 +99,12 @@ export type ProofArtifact = {
     c: string;
     publicInputs: string[];
   };
+  /** Result of on-chain verification via the relayer's settle() submission. */
+  onChain?: {
+    txHash: string | null;
+    explorer: string | null;
+    network: string;
+  };
   /** True when using demo/mock data instead of a real Groth16 proof. */
   demoMode?: boolean;
 };

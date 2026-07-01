@@ -7,10 +7,11 @@
     "start": "node src/index.ts"
   },
   "dependencies": {
-    "circomlibjs": "^0.1.7"
+    "circomlibjs": "^0.1.7",
+    "ethers": "^6.17.0"
   },
   "devDependencies": {
-    "typescript": "^5.7.0",
-    "@types/node": "^22.0.0"
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
   }
 }

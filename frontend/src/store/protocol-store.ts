@@ -31,9 +31,55 @@ import {
   type StealthIdentity,
 } from "@/lib/protocol-engine";
 
+export type DemoStage = "idle" | "proving" | "settling" | "done" | "error";
+
+export type DemoStatus = {
+  /** True while a proof is being generated or submitted (drives spinners/disabled buttons). */
+  running: boolean;
+  stage: DemoStage;
+  /** Plain-language description of what is happening, for non-technical viewers. */
+  message: string;
+  /** True when a real snarkjs Groth16 proof was produced (not the demo fallback). */
+  isRealProof: boolean;
+  /** Set once the proof is verified on the Stellar contract on-chain. */
+  onChain: { txHash: string | null; explorer: string | null; network: string } | null;
+};
+
+const STATUS_IDLE: DemoStatus = {
+  running: false,
+  stage: "idle",
+  message: "Ready. Run the demo to generate a real zero-knowledge proof and verify it on Stellar.",
+  isRealProof: false,
+  onChain: null,
+};
+
+const MSG_PROVING =
+  "Generating a real zero-knowledge proof in your browser with snarkjs — this takes ~10s and never leaves your device.";
+const MSG_SETTLING =
+  "Proof ready. Submitting it to the ZeroPath contract on Stellar testnet for on-chain BN254 verification…";
+const MSG_SETTLED_ONCHAIN =
+  "Verified on Stellar. The contract ran bn254.pairing_check(), the proof passed, and funds were released.";
+const MSG_REAL_OFFCHAIN =
+  "Real Groth16 proof generated and verified against the circuit's key in-browser. Configure the relayer to also settle on Stellar testnet.";
+const MSG_PROOF_REAL =
+  "Real Groth16 proof generated and locally verified against the circuit's verification key.";
+const MSG_DEMO_FALLBACK =
+  "Showing a demo proof. Start the relayer (cd relayer && npm start) to generate a real proof in the browser.";
+
+function errorStatus(error: unknown): DemoStatus {
+  return {
+    running: false,
+    stage: "error",
+    message: "Something interrupted the run: " + (error instanceof Error ? error.message : String(error)),
+    isRealProof: false,
+    onChain: null,
+  };
+}
+
 type ProtocolStore = {
   prompt: string;
   intent: RouterIntent;
+  demoStatus: DemoStatus;
   parsedIntent: ParsedIntent;
   route: RouteLeg[];
   solverQuotes: SolverQuote[];
@@ -72,6 +118,7 @@ let epoch = 4218;
 export const useProtocolStore = create<ProtocolStore>((set, get) => ({
   prompt: defaultPrompt,
   intent: defaultIntent,
+  demoStatus: STATUS_IDLE,
   parsedIntent: initialParsedIntent,
   route: buildRoute(defaultIntent, initialPhase),
   solverQuotes: initialQuotes,
@@ -179,34 +226,84 @@ export const useProtocolStore = create<ProtocolStore>((set, get) => ({
   },
 
   generateProof: async () => {
-    await ensureStealthIdentity();
-    const current = get();
-    const solver = current.solverQuotes.find((quote) => quote.id === current.selectedSolverId) ?? current.solverQuotes[0];
+    set({ demoStatus: { running: true, stage: "proving", message: MSG_PROVING, isRealProof: false, onChain: null } });
+    try {
+      await ensureStealthIdentity();
+      const current = get();
+      const solver = current.solverQuotes.find((quote) => quote.id === current.selectedSolverId) ?? current.solverQuotes[0];
 
-    // Try real proof generation, fall back to demo artifact
-    const realProofData = await tryGenerateRealProof(0);
-    const artifact = buildProofArtifact(current.intent, current.stealthIdentity, solver.id, epoch, realProofData ?? undefined);
-    set({
-      proofArtifact: artifact,
-      runId: current.runId + 1,
-    });
-    runPhases(["deposit", "commitment", "proof", "verify"], 620);
+      // Try real proof generation, fall back to demo artifact
+      const realProofData = await tryGenerateRealProof(0);
+      const artifact = buildProofArtifact(current.intent, current.stealthIdentity, solver.id, epoch, realProofData ?? undefined);
+      set({
+        proofArtifact: artifact,
+        runId: current.runId + 1,
+        demoStatus: {
+          running: false,
+          stage: "done",
+          isRealProof: !!realProofData,
+          onChain: null,
+          message: realProofData ? MSG_PROOF_REAL : MSG_DEMO_FALLBACK,
+        },
+      });
+      runPhases(["deposit", "commitment", "proof", "verify"], 620);
+    } catch (error) {
+      set({ demoStatus: errorStatus(error) });
+    }
   },
 
   executeTransfer: async () => {
-    await ensureStealthIdentity();
-    const current = get();
-    const solver = current.solverQuotes.find((quote) => quote.id === current.selectedSolverId) ?? current.solverQuotes[0];
-    epoch += 1;
+    set({ demoStatus: { running: true, stage: "proving", message: MSG_PROVING, isRealProof: false, onChain: null } });
+    try {
+      await ensureStealthIdentity();
+      const current = get();
+      const solver = current.solverQuotes.find((quote) => quote.id === current.selectedSolverId) ?? current.solverQuotes[0];
+      epoch += 1;
 
-    // Try real proof generation, fall back to demo artifact
-    const realProofData = await tryGenerateRealProof(0);
-    const artifact = buildProofArtifact(current.intent, current.stealthIdentity, solver.id, epoch, realProofData ?? undefined);
-    set({
-      proofArtifact: artifact,
-      runId: current.runId + 1,
-    });
-    runPhases(["deposit", "commitment", "proof", "verify", "settlement", "complete"], 720);
+      // Try real proof generation, fall back to demo artifact. Rotate the demo
+      // leaf so repeated on-chain settlements each get a fresh nullifier.
+      const leafIndex = onChainLeafCursor % DEMO_LEAF_COUNT;
+      onChainLeafCursor += 1;
+      const realProofData = await tryGenerateRealProof(leafIndex);
+      const artifact = buildProofArtifact(current.intent, current.stealthIdentity, solver.id, epoch, realProofData ?? undefined);
+      set({
+        proofArtifact: artifact,
+        runId: current.runId + 1,
+        demoStatus: {
+          running: !!realProofData,
+          stage: realProofData ? "settling" : "done",
+          isRealProof: !!realProofData,
+          onChain: null,
+          message: realProofData ? MSG_SETTLING : MSG_DEMO_FALLBACK,
+        },
+      });
+      runPhases(["deposit", "commitment", "proof", "verify", "settlement", "complete"], 720);
+
+      // With a real proof in hand, submit it to the deployed Stellar contract so
+      // it is verified on-chain, then surface the transaction to the viewer.
+      if (realProofData) {
+        const onChain = await trySubmitOnChain(realProofData);
+        const cur = get();
+        set({
+          proofArtifact: cur.proofArtifact
+            ? {
+                ...cur.proofArtifact,
+                onChain: onChain ?? undefined,
+                settlementTx: onChain?.txHash ?? cur.proofArtifact.settlementTx,
+              }
+            : cur.proofArtifact,
+          demoStatus: {
+            running: false,
+            stage: "done",
+            isRealProof: true,
+            onChain,
+            message: onChain ? MSG_SETTLED_ONCHAIN : MSG_REAL_OFFCHAIN,
+          },
+        });
+      }
+    } catch (error) {
+      set({ demoStatus: errorStatus(error) });
+    }
   },
 
   resetDemo: () => {
@@ -223,6 +320,7 @@ export const useProtocolStore = create<ProtocolStore>((set, get) => ({
       ...next,
       phase: "idle",
       proofArtifact: null,
+      demoStatus: STATUS_IDLE,
       runId: current.runId + 1,
     });
   },
@@ -245,12 +343,16 @@ function deriveState({
   const preferred = solverQuotes.find((quote) => quote.id === preferredSolverId && quote.complianceSupport.includes(intent.complianceMode));
   const solver = preferred ?? chooseSolver(intent, solverQuotes);
   const proofArtifact = artifact
-    ? buildProofArtifact(intent, identity, solver.id, epoch,
-        artifact.realProof ? {
-          proof: artifact.realProof,
-          publicSignals: artifact.realPublicSignals ?? [],
-          sorobanEncoded: artifact.sorobanEncoded,
-        } : undefined)
+    ? {
+        ...buildProofArtifact(intent, identity, solver.id, epoch,
+          artifact.realProof ? {
+            proof: artifact.realProof,
+            publicSignals: artifact.realPublicSignals ?? [],
+            sorobanEncoded: artifact.sorobanEncoded,
+          } : undefined),
+        // Preserve any on-chain settlement result across state re-derivations.
+        onChain: artifact.onChain,
+      }
     : artifact;
 
   return {
@@ -314,6 +416,12 @@ function sanitizeIntent(intent: RouterIntent): RouterIntent {
 const RELAYER_URL = process.env.NEXT_PUBLIC_RELAYER_URL ?? "http://localhost:8787";
 const CIRCUIT_WASM_PATH = "/circuits/private_settlement.wasm";
 const CIRCUIT_ZKEY_PATH = "/circuits/private_settlement_final.zkey";
+
+// There are 4 pre-seeded demo leaves, each with a single-use nullifier. Rotate
+// through them so repeated on-chain settlements use fresh nullifiers (a reused
+// leaf is still verified in-browser but rejected on-chain as "nullifier spent").
+const DEMO_LEAF_COUNT = 4;
+let onChainLeafCursor = 0;
 
 type RealProofData = {
   proof: { pi_a: string[]; pi_b: string[][]; pi_c: string[] };
@@ -382,6 +490,51 @@ async function tryGenerateRealProof(leafIndex: number): Promise<RealProofData | 
     };
   } catch (error) {
     console.info("[ZeroPath] Real proof generation unavailable — using demo artifact. This is expected if the relayer is not running.");
+    console.warn("[ZeroPath] Underlying error:", error);
+    return null;
+  }
+}
+
+type OnChainResult = { txHash: string | null; explorer: string | null; network: string };
+
+/**
+ * Submit a real Groth16 proof to the relayer's /v1/settle endpoint, which
+ * invokes the deployed contract's settle() on Stellar so the proof is verified
+ * on-chain. Returns null if the relayer is unreachable or on-chain settlement
+ * is not configured (expected in a local demo without a deployed contract).
+ */
+async function trySubmitOnChain(realProofData: RealProofData): Promise<OnChainResult | null> {
+  try {
+    const enc = realProofData.sorobanEncoded;
+    if (!enc || enc.publicInputs.length < 6) return null;
+
+    const body = {
+      publicInputs: {
+        batch_root: enc.publicInputs[0],
+        source_event_root: enc.publicInputs[1],
+        nullifier_hash: enc.publicInputs[2],
+        destination_commitment: enc.publicInputs[3],
+        asset_id: enc.publicInputs[4],
+      },
+      // The proof commits to the demo epoch, not the UI's running counter.
+      epoch: Number(realProofData.publicSignals[5]),
+      proof: { a: enc.a, b: enc.b, c: enc.c },
+    };
+
+    const res = await fetch(`${RELAYER_URL}/v1/settle`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      console.info("[ZeroPath] On-chain settlement unavailable (status " + res.status + "). This is expected without a deployed contract.");
+      return null;
+    }
+    const data = await res.json();
+    console.log("[ZeroPath] Proof settled on-chain:", data);
+    return { txHash: data.txHash ?? null, explorer: data.explorer ?? null, network: data.network ?? "testnet" };
+  } catch (error) {
+    console.info("[ZeroPath] On-chain settlement submission failed — proof still verified in-browser.");
     console.warn("[ZeroPath] Underlying error:", error);
     return null;
   }
