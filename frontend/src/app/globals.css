@@ -80,7 +80,10 @@
 
 html {
   max-width: 100%;
+  /* `clip` prevents horizontal scroll WITHOUT breaking position:fixed
+     (overflow-x:hidden on the root breaks fixed nav in Safari). */
   overflow-x: hidden;
+  overflow-x: clip;
   scroll-behavior: smooth;
   scroll-padding-top: 96px;
 }
@@ -90,6 +93,7 @@ body {
   min-height: 100vh;
   margin: 0;
   overflow-x: hidden;
+  overflow-x: clip;
   color: var(--text);
   background:
     radial-gradient(circle at 82% 0%, rgba(255, 139, 61, 0.12), transparent 34rem),

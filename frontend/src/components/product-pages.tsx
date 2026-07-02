@@ -971,12 +971,6 @@ export function AboutExperience() {
             <span className="hq-footer-mark"><span aria-hidden="true" /> ZeroPath</span>
             <p>The operating system for private settlement.</p>
           </div>
-          <div className="hq-footer-links">
-            <Link href="/operate">Operate</Link>
-            <Link href="/proof">Proof</Link>
-            <Link href="/explorer">Explorer</Link>
-            <Link href="/app">Launch App</Link>
-          </div>
           <div className="hq-footer-legal">
             <span>Built on Stellar · BN254 · Groth16</span>
             <span>© 2025 ZeroPath</span>
