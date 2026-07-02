@@ -21,10 +21,8 @@ import {
   Gauge,
   Layers,
   Loader2,
-  LockKeyhole,
   Network,
   Play,
-  RotateCcw,
   Scale,
   ShieldCheck,
   Sparkles,
@@ -58,7 +56,6 @@ import { CountUp, TypingHash } from "@/components/cinematic";
 import { MissionTimeline } from "@/components/mission-timeline";
 import { InteractiveCard } from "@/components/ui/interactive-card";
 import { ProofEngine } from "@/components/ui/proof-engine";
-import { SettlementGlobe } from "@/components/ui/settlement-globe";
 import { SettlementEngine } from "@/components/ui/settlement-engine";
 import { Parallax, Reveal } from "@/components/ui/reveal";
 import { SectionHead } from "@/components/ui/section";
@@ -679,11 +676,9 @@ export function ExplorerExperience() {
   const liveFeed = useLiveFeed();
   const analytics = useProtocolStore((state) => state.analytics);
   const events = useProtocolStore((state) => state.events);
-  const executeTransfer = useProtocolStore((state) => state.executeTransfer);
   const intent = useProtocolStore((state) => state.intent);
   const phase = useProtocolStore((state) => state.phase);
   const proofArtifact = useProtocolStore((state) => state.proofArtifact);
-  const resetDemo = useProtocolStore((state) => state.resetDemo);
 
   // Where "Transfer complete" links: the real on-chain tx if we have one,
   // otherwise the deployed settlement contract on Stellar testnet.
@@ -707,22 +702,6 @@ export function ExplorerExperience() {
         body="Deposit, commitment, proof, Stellar verification, and final settlement are visualized as one lifecycle."
       />
       <section className="explorer-theater page-reveal">
-        <div className="explorer-globe">
-          <SettlementGlobe active={phase !== "idle" && phase !== "complete"} />
-        </div>
-        <div className="explorer-globe-label" aria-hidden="true">
-          <span className="live-dot" /> Global settlement network · live
-        </div>
-        <div className="explorer-controls">
-          <div className="button-row">
-            <button className="primary-button" onClick={() => void executeTransfer()} type="button">
-              <LockKeyhole size={15} /> Execute Transfer
-            </button>
-            <button className="ghost-button" onClick={resetDemo} type="button">
-              <RotateCcw size={15} /> Reset
-            </button>
-          </div>
-        </div>
         <div className="explorer-flow">
           <div className="settlement-theater" aria-label="End-to-end private settlement flow">
             {demoSteps.map((step, i) => {

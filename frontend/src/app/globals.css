@@ -2634,8 +2634,8 @@ a {
 .explorer-theater {
   display: grid;
   gap: 26px;
-  min-height: 680px;
-  padding: 34px;
+  min-height: auto;
+  padding: 28px;
   background: #050607;
 }
 
@@ -4802,9 +4802,8 @@ a {
 .explorer-theater {
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
   gap: 24px;
-  min-height: 640px;
+  min-height: 0;
   position: relative;
 }
 .explorer-theater .explorer-globe {
