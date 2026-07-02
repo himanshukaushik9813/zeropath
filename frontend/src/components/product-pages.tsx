@@ -56,7 +56,7 @@ import { CountUp, TypingHash } from "@/components/cinematic";
 import { MissionTimeline } from "@/components/mission-timeline";
 import { InteractiveCard } from "@/components/ui/interactive-card";
 import { ProofEngine } from "@/components/ui/proof-engine";
-import { SettlementEngine } from "@/components/ui/settlement-engine";
+import { EngineRender } from "@/components/ui/engine-render";
 import { Parallax, Reveal } from "@/components/ui/reveal";
 import { SectionHead } from "@/components/ui/section";
 
@@ -853,7 +853,7 @@ export function AboutExperience() {
         </div>
         <Reveal delay={0.12} className="hq-hero-hq-stage">
           <div className="hq-engine-room">
-            <SettlementEngine intensity={0.6} />
+            <EngineRender />
             <span className="hq-engine-tag" aria-hidden="true">SETTLEMENT ENGINE · LIVE</span>
           </div>
         </Reveal>
