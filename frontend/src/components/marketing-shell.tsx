@@ -1,11 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { ArrowUpRight } from "lucide-react";
-import { useTransitionStore } from "@/store/transition-store";
 
 // Landing (marketing) navigation ONLY. The application navigation does not
 // exist here — it lives entirely inside the /app shell.
@@ -16,26 +14,6 @@ const navItems = [
   { href: "/explorer", label: "Explorer" },
   { href: "/about", label: "About" },
 ] as const;
-
-function LaunchApp() {
-  const router = useRouter();
-  const start = useTransitionStore((state) => state.start);
-
-  const onLaunch = () => {
-    // Begin the glass-morph transition, then navigate mid-fade so the app
-    // mounts behind the overlay for a seamless Apple-style handoff.
-    start("launch");
-    router.prefetch("/app");
-    window.setTimeout(() => router.push("/app"), 380);
-  };
-
-  return (
-    <button className="launch-cta" onClick={onLaunch} type="button">
-      Launch App
-      <ArrowUpRight size={14} />
-    </button>
-  );
-}
 
 export function MarketingShell({ children }: Readonly<{ children: React.ReactNode }>) {
   const pathname = usePathname();
@@ -72,7 +50,6 @@ export function MarketingShell({ children }: Readonly<{ children: React.ReactNod
             );
           })}
         </nav>
-        <LaunchApp />
       </header>
       <motion.main
         animate={{ opacity: 1, y: 0 }}
