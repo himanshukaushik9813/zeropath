@@ -31,3 +31,7 @@ contracts/ethereum/broadcast/
 
 # Soroban test snapshots (regenerated on every `cargo test`)
 contracts/stellar/settlement/test_snapshots/
+
+# Vercel CLI link
+.vercel/
+**/.vercel/
