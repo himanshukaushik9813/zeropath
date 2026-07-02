@@ -670,6 +670,10 @@ function useLiveFeed() {
   return items;
 }
 
+// Deployed ZeroPath settlement contract on Stellar testnet — used to verify a
+// completed settlement on stellar.expert when there's no per-tx hash.
+const STELLAR_TESTNET_CONTRACT = "CCFZ2A3VBMND6P6S4XBVPCWT5CVD7BZBUZBTQ2FTN6B6RIAF6YJF6F3S";
+
 export function ExplorerExperience() {
   usePageMotion();
   const liveFeed = useLiveFeed();
@@ -680,6 +684,12 @@ export function ExplorerExperience() {
   const phase = useProtocolStore((state) => state.phase);
   const proofArtifact = useProtocolStore((state) => state.proofArtifact);
   const resetDemo = useProtocolStore((state) => state.resetDemo);
+
+  // Where "Transfer complete" links: the real on-chain tx if we have one,
+  // otherwise the deployed settlement contract on Stellar testnet.
+  const verifyUrl =
+    proofArtifact?.onChain?.explorer ??
+    `https://stellar.expert/explorer/testnet/contract/${STELLAR_TESTNET_CONTRACT}`;
 
   const demoSteps = [
     { id: "deposit", label: getChain(intent.source).name, detail: `${formatAmount(intent.amount)} ${intent.asset} deposit` },
@@ -736,20 +746,37 @@ export function ExplorerExperience() {
         </div>
       </section>
       <section className="event-stream page-reveal" aria-label="Live network feed">
-        {(events.length ? events.map((e) => ({ ...e, kind: "settle" as const })) : liveFeed).map((event) => (
-          <motion.article
-            key={event.id}
-            className={`feed-row ${"kind" in event ? event.kind : "settle"}`}
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-          >
-            <span className="feed-dot" aria-hidden="true" />
-            <time>{event.timestamp}</time>
-            <strong>{event.title}</strong>
-            <p>{event.detail}</p>
-          </motion.article>
-        ))}
+        {(events.length ? events.map((e) => ({ ...e, kind: "settle" as const })) : liveFeed).map((event) => {
+          const isComplete = "phase" in event && event.phase === "complete";
+          return (
+            <motion.article
+              key={event.id}
+              className={`feed-row ${"kind" in event ? event.kind : "settle"}${isComplete ? " verify" : ""}`}
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+            >
+              <span className="feed-dot" aria-hidden="true" />
+              <time>{event.timestamp}</time>
+              <strong>
+                {event.title}
+                {isComplete ? (
+                  <span className="feed-verify-tag">Verify on Stellar <ExternalLink size={12} /></span>
+                ) : null}
+              </strong>
+              <p>{event.detail}</p>
+              {isComplete ? (
+                <a
+                  className="feed-verify-hit"
+                  href={verifyUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label="Verify settlement on Stellar testnet explorer"
+                />
+              ) : null}
+            </motion.article>
+          );
+        })}
       </section>
     </div>
   );

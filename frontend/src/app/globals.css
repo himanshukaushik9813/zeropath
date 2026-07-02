@@ -5581,3 +5581,34 @@ a {
 
 
 
+
+/* Explorer feed — "Transfer complete" is a link to the Stellar explorer */
+.feed-row.verify { cursor: pointer; }
+.feed-row.verify:hover {
+  border-color: var(--orange-line);
+  background: rgba(255, 139, 61, 0.05);
+}
+.feed-verify-hit {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  border-radius: inherit;
+}
+.feed-verify-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: 10px;
+  padding: 2px 9px;
+  border: 1px solid var(--orange-line);
+  border-radius: 999px;
+  color: var(--orange);
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 10px;
+  font-weight: 720;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  vertical-align: middle;
+  transition: background 0.3s;
+}
+.feed-row.verify:hover .feed-verify-tag { background: rgba(255, 139, 61, 0.14); }
