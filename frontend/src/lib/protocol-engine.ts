@@ -447,12 +447,14 @@ export function labelForCompliance(mode: ComplianceMode) {
   return complianceModes.find((item) => item.id === mode)?.label ?? "Private";
 }
 
+// Pin the locale so server (Node) and client (browser) format identically —
+// otherwise SSR'd numbers hydrate-mismatch on machines with a non-US default locale.
 export function formatAmount(value: number) {
-  return new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(value);
+  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(value);
 }
 
 export function formatUsd(value: number) {
-  return new Intl.NumberFormat(undefined, {
+  return new Intl.NumberFormat("en-US", {
     currency: "USD",
     maximumFractionDigits: 0,
     style: "currency",

@@ -3,6 +3,9 @@ dist/
 .next/
 *.tsbuildinfo
 .DS_Store
+
+# Raw screen-recording source (transcoded to public/hero-bg.mp4 — keep that, not this)
+frontend/public/*.mov
 .env
 .env.*
 !.env.example

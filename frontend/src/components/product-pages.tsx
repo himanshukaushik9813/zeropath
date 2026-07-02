@@ -3,23 +3,33 @@
 import dynamic from "next/dynamic";
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import gsap from "gsap";
 import Lenis from "lenis";
 import {
+  Activity,
   AlertTriangle,
+  ArrowLeftRight,
   ArrowRight,
   Brain,
+  BrainCircuit,
   CheckCircle2,
+  Compass,
   Cpu,
   ExternalLink,
+  Gauge,
+  Layers,
   Loader2,
   LockKeyhole,
+  Network,
   Play,
   RotateCcw,
+  Scale,
   ShieldCheck,
   Sparkles,
+  Store,
+  Wallet,
   Zap,
 } from "lucide-react";
 import heroSettlementCore from "@/assets/visuals/hero-settlement-core.png";
@@ -43,21 +53,15 @@ import {
   type SolverQuote,
 } from "@/lib/protocol-engine";
 import { useProtocolStore, type DemoStage } from "@/store/protocol-store";
-
-const SettlementGlobe3D = dynamic(
-  () => import("@/components/settlement-globe-3d").then((mod) => mod.SettlementGlobe3D),
-  { loading: () => <div className="globe-loading">Loading settlement command surface</div>, ssr: false }
-);
-
-const SettlementCoreScene = dynamic(
-  () => import("@/components/protocol-scenes").then((mod) => mod.SettlementCoreScene),
-  { loading: () => <SceneFallback label="Loading settlement core" />, ssr: false }
-);
-
-const ProofEngineScene = dynamic(
-  () => import("@/components/protocol-scenes").then((mod) => mod.ProofEngineScene),
-  { loading: () => <SceneFallback label="Loading proof engine" />, ssr: false }
-);
+import { STAGE_COUNT, useExecutionStore } from "@/store/execution-store";
+import { CountUp, TypingHash } from "@/components/cinematic";
+import { MissionTimeline } from "@/components/mission-timeline";
+import { InteractiveCard } from "@/components/ui/interactive-card";
+import { ProofEngine } from "@/components/ui/proof-engine";
+import { SettlementGlobe } from "@/components/ui/settlement-globe";
+import { SettlementEngine } from "@/components/ui/settlement-engine";
+import { Parallax, Reveal } from "@/components/ui/reveal";
+import { SectionHead } from "@/components/ui/section";
 
 const ComplianceRingsScene = dynamic(
   () => import("@/components/protocol-scenes").then((mod) => mod.ComplianceRingsScene),
@@ -66,71 +70,131 @@ const ComplianceRingsScene = dynamic(
 
 const demoPhaseOrder: ProtocolPhase[] = ["deposit", "commitment", "proof", "verify", "settlement", "complete"];
 
+const ECOSYSTEM = [
+  { index: "01", kicker: "AI Privacy Router", title: "Operate", desc: "Type an outcome. ZeroPath parses intent, routes through Stellar, and executes settlement.", href: "/operate", Icon: ArrowLeftRight },
+  { index: "02", kicker: "BN254 Portability Engine", title: "Proof", desc: "A Groth16 proof generated in-browser, verified natively on Stellar. Privacy becomes settlement.", href: "/proof", Icon: Cpu },
+  { index: "03", kicker: "Settlement Lifecycle", title: "Explorer", desc: "Watch one private transfer settle end-to-end: deposit, commitment, proof, finality.", href: "/explorer", Icon: Compass },
+  { index: "04", kicker: "Vision & Architecture", title: "About", desc: "The category is not a bridge. It is the operating system for private value transfer.", href: "/about", Icon: Layers },
+] as const;
+
+/** Local "live network" feel — nudges a couple of headline counters upward over time. */
+function useLiveNetwork(settlementCount: number, proofVerifications: number) {
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const id = window.setInterval(() => setTick((t) => t + 1), 3400);
+    return () => window.clearInterval(id);
+  }, []);
+  return { settlements: settlementCount + tick * 3, proofs: proofVerifications + tick * 2 };
+}
+
+function HeroStat({ label, value, format }: { label: string; value: number; format: (n: number) => string }) {
+  return (
+    <div className="hero-stat">
+      <strong><CountUp value={value} format={(n) => format(Math.round(n))} /></strong>
+      <span>{label}</span>
+    </div>
+  );
+}
+
 export function HomeExperience() {
   const runtime = usePageMotion();
-  const route = useProtocolStore((state) => state.route);
-  const intent = useProtocolStore((state) => state.intent);
   const analytics = useProtocolStore((state) => state.analytics);
-  const phase = useProtocolStore((state) => state.phase);
-  const regions = useProtocolStore((state) => state.regions);
-  const selectedRegionId = useProtocolStore((state) => state.selectedRegionId);
-  const selectRegion = useProtocolStore((state) => state.selectRegion);
-  const solver = useActiveSolver();
+  const live = useLiveNetwork(analytics.settlementCount, analytics.proofVerifications);
 
   return (
     <div className={runtime.reducedMotion ? "hq-route reduce-motion" : "hq-route"}>
-      <Image alt="" className="hq-backplate monolith-backplate" priority src={heroSettlementCore} />
-      <section className="hq-hero page-reveal">
+      {runtime.reducedMotion ? (
+        <Image alt="" className="hq-backplate monolith-backplate" priority src={heroSettlementCore} />
+      ) : (
+        <>
+          <video
+            className="hero-bg-video"
+            autoPlay
+            muted
+            loop
+            playsInline
+            poster="/hero-bg-poster.jpg"
+            aria-hidden="true"
+          >
+            <source src="/hero-bg.mp4" type="video/mp4" />
+          </video>
+          <div className="hero-bg-scrim" aria-hidden="true" />
+        </>
+      )}
+      <section className="hq-hero solo">
         <div className="hq-hero-copy">
-          <p className="eyebrow">Private Cross-Chain Settlement Infrastructure</p>
-          <h1>Route Intent. Prove Privacy. Settle on Stellar.</h1>
-          <p>
-            ZeroPath moves value across chains privately. Instead of a public bridge, your transfer becomes a
-            zero-knowledge proof — and a Stellar smart contract verifies that proof on-chain before releasing funds,
-            without ever revealing the sender, receiver, route, or amount.
-          </p>
-          <div className="hero-actions">
-            <Link className="primary-button" href="/operate?run=1">
-              Run the live demo <ArrowRight size={15} />
-            </Link>
-            <Link className="secondary-button" href="/proof">
-              How the proof works
-            </Link>
-          </div>
-          <p className="hero-footnote">
-            The demo generates a real Groth16 proof in your browser and verifies it on Stellar testnet — no slideware.
-          </p>
+          <Reveal delay={0}>
+            <p className="eyebrow"><span className="eyebrow-dot" aria-hidden="true" />Private Cross-Chain Settlement Infrastructure</p>
+          </Reveal>
+          <Reveal delay={0.09}>
+            <h1>Route Intent.<br />Prove Privacy.<br />Settle on Stellar.</h1>
+          </Reveal>
+          <Reveal delay={0.18}>
+            <p className="hero-lede">
+              ZeroPath moves value across chains privately. Your transfer becomes a zero-knowledge proof — and a
+              Stellar smart contract verifies it on-chain before funds move, never revealing sender, receiver, route,
+              or amount.
+            </p>
+          </Reveal>
+          <Reveal delay={0.26}>
+            <div className="hero-actions">
+              <Link className="primary-button" href="/operate?run=1">
+                Run the live demo <ArrowRight size={15} />
+              </Link>
+              <Link className="secondary-button" href="/proof">
+                How the proof works
+              </Link>
+            </div>
+          </Reveal>
+          <Reveal delay={0.34}>
+            <div className="hero-ticker" aria-label="Live network metrics">
+              <HeroStat label="Settlements settled" value={live.settlements} format={formatAmount} />
+              <HeroStat label="Anonymity set" value={analytics.anonymitySet} format={formatAmount} />
+              <HeroStat label="Proofs verified" value={live.proofs} format={formatAmount} />
+              <HeroStat label="Pool liquidity" value={analytics.poolSizeUsd} format={(n) => `$${(n / 1_000_000).toFixed(1)}M`} />
+            </div>
+          </Reveal>
+          <Reveal delay={0.42}>
+            <div className="hero-route" aria-hidden="true">
+              <span className="hero-route-node">ETH</span>
+              <span className="hero-route-link"><b /></span>
+              <span className="hero-route-node stellar">Stellar</span>
+              <span className="hero-route-link"><b /></span>
+              <span className="hero-route-node">SOL</span>
+              <span className="hero-route-tag">real Groth16 · verified on Stellar testnet</span>
+            </div>
+          </Reveal>
         </div>
-        <div className="hero-visual-panel">
-          <SettlementGlobe3D
-            analytics={analytics}
-            noWebGL={runtime.noWebGL}
-            onSelectRegion={selectRegion}
-            phase={phase}
-            reducedMotion={runtime.reducedMotion}
-            regions={regions}
-            route={route}
-            selectedRegionId={selectedRegionId}
-            solverName={solver.name}
-            variant="hero"
-          />
-        </div>
+        <div className="hero-scrollcue" aria-hidden="true"><i /><span>Scroll</span></div>
       </section>
-      <section className="ecosystem-grid page-reveal" aria-label="ZeroPath product ecosystem">
-        {[
-          ["Operate", "AI privacy router", "/operate"],
-          ["Proof", "BN254 portability engine", "/proof"],
-          ["Network", "Global settlement activity", "/network"],
-          ["Compliance", "Institutional policy modes", "/compliance"],
-          ["Solvers", "Private liquidity competition", "/solvers"],
-          ["Explorer", "End-to-end transaction lifecycle", "/explorer"],
-        ].map(([title, body, href]) => (
-          <Link className="ecosystem-card" href={href} key={href}>
-            <span>{title}</span>
-            <strong>{body}</strong>
-            <ArrowRight size={15} />
-          </Link>
-        ))}
+
+      <section className="ecosystem" id="ecosystem" aria-label="ZeroPath product ecosystem">
+        <Reveal>
+          <SectionHead
+            eyebrow="The ZeroPath OS"
+            title="Four surfaces. One protocol."
+            body="Every surface of ZeroPath is a view into the same private settlement engine — from natural-language intent to on-chain finality."
+          />
+        </Reveal>
+        <div className="ecosystem-grid">
+          {ECOSYSTEM.map((item, i) => {
+            const Icon = item.Icon;
+            return (
+              <Reveal key={item.href} delay={i * 0.07}>
+                <InteractiveCard className="eco-card">
+                  <span className="eco-index">{item.index}</span>
+                  <span className="eco-icon"><Icon size={18} /></span>
+                  <span className="eco-kicker">{item.kicker}</span>
+                  <strong className="eco-title">{item.title}</strong>
+                  <p className="eco-desc">{item.desc}</p>
+                  <span className="eco-go">Enter <ArrowRight size={14} /></span>
+                  <Link className="eco-hit" href={item.href} aria-label={item.title} />
+                </InteractiveCard>
+              </Reveal>
+            );
+          })}
+        </div>
       </section>
     </div>
   );
@@ -148,20 +212,54 @@ export function OperateExperience() {
   const setPrompt = useProtocolStore((state) => state.setPrompt);
   const updateIntent = useProtocolStore((state) => state.updateIntent);
   const running = useProtocolStore((state) => state.demoStatus.running);
+  const proofArtifact = useProtocolStore((state) => state.proofArtifact);
   const solver = useActiveSolver();
   const routePath = getRoutePath(route, intent.destination);
 
+  // Cinematic execution timeline (shared FSM with the /app console).
+  const active = useExecutionStore((s) => s.active);
+  const stage = useExecutionStore((s) => s.stage);
+  const complete = useExecutionStore((s) => s.complete);
+  const begin = useExecutionStore((s) => s.begin);
+  const setStage = useExecutionStore((s) => s.setStage);
+  const finish = useExecutionStore((s) => s.finish);
+  const fail = useExecutionStore((s) => s.fail);
+  const reset = useExecutionStore((s) => s.reset);
+
+  // Orchestrate the mission: pre-proof stages advance on a schedule while the
+  // real proof generates; final stages gate on the actual work completing.
+  const runExecute = () => {
+    if (active) return;
+    begin();
+    const work = executeTransfer();
+    const schedule = [0, 650, 1400, 2300, 3300, 4500, 5900];
+    schedule.forEach((delay, i) => window.setTimeout(() => setStage(i), delay));
+    work
+      .then(() => {
+        setStage(7);
+        window.setTimeout(() => setStage(8), 550);
+        window.setTimeout(() => setStage(9), 1100);
+        window.setTimeout(() => finish(), 1700);
+        window.setTimeout(() => reset(), 6500);
+      })
+      .catch(() => {
+        fail();
+        window.setTimeout(() => reset(), 3000);
+      });
+  };
+
   // Guided one-click: arriving via /operate?run=1 (the Home "Run live demo"
-  // button) kicks off the full flow automatically.
+  // button) kicks off the full cinematic flow automatically.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get("run") === "1") {
-      void useProtocolStore.getState().executeTransfer();
-    }
+    if (params.get("run") === "1") runExecute();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const busy = running || active;
+
   return (
-    <div className="hq-route operate-route">
+    <div className={`hq-route operate-route${active ? " executing" : ""}${complete ? " complete" : ""}`}>
       <PageHeader
         eyebrow="AI Privacy Router"
         title="A command surface for private settlement."
@@ -170,22 +268,33 @@ export function OperateExperience() {
       <section className="operate-workbench page-reveal">
         <div className="intent-terminal">
           <div className="terminal-title">
+            <span className="term-dots" aria-hidden="true">
+              <i />
+              <i />
+              <i />
+            </span>
             <Brain size={16} />
-            Intent
+            <span className="term-path">intent://zeropath.router</span>
+            <span className="term-live" aria-hidden="true">
+              <i /> live
+            </span>
           </div>
-          <textarea
-            aria-label="Private transfer intent"
-            onChange={(event) => setPrompt(event.target.value)}
-            value={prompt}
-          />
+          <div className="terminal-field">
+            <textarea
+              aria-label="Private transfer intent"
+              onChange={(event) => setPrompt(event.target.value)}
+              value={prompt}
+            />
+            <span className="terminal-scan" aria-hidden="true" />
+          </div>
           <div className="button-row">
-            <button className="secondary-button" onClick={parsePrompt} type="button" disabled={running}>
+            <button className="secondary-button" onClick={parsePrompt} type="button" disabled={busy}>
               <Sparkles size={15} /> Parse Intent
             </button>
-            <button className="primary-button" onClick={() => void executeTransfer()} type="button" disabled={running}>
-              {running ? (
+            <button className="primary-button" onClick={runExecute} type="button" disabled={busy}>
+              {busy ? (
                 <>
-                  <Loader2 className="spin" size={15} /> Running…
+                  <span className="btn-pulse" aria-hidden="true" /> Executing…
                 </>
               ) : (
                 <>
@@ -215,6 +324,48 @@ export function OperateExperience() {
           </div>
         </div>
       </section>
+
+      <section className="operate-execution page-reveal" aria-label="Execution mission control">
+        <div className="exec-panel exec-panel-timeline">
+          <div className="exec-panel-head">
+            <span>Execution timeline</span>
+            <small>{active ? `stage ${Math.min(stage + 1, STAGE_COUNT)} / ${STAGE_COUNT}` : complete ? "complete" : "standby"}</small>
+          </div>
+          <MissionTimeline />
+        </div>
+        <div className="exec-panel exec-panel-core">
+          <div className="exec-panel-head">
+            <span>Proof core</span>
+            <small>{complete ? "settlement finalized" : active ? "executing" : "idle"}</small>
+          </div>
+          <div className="exec-core-stage">
+            <ProofEngine intensity={complete ? 0.9 : active ? 0.72 : 0.42} verified={complete} />
+            <div className="exec-core-badge">
+              <strong>{proofArtifact?.bn254Status === "verified" ? "VERIFIED" : active ? "PROVING" : "BN254"}</strong>
+              <small>Stellar pairing check</small>
+            </div>
+          </div>
+          <div className="exec-live-metrics">
+            <div className="exec-metric mono">
+              <span>Nullifier</span>
+              <strong>{proofArtifact ? <TypingHash text={shorten(proofArtifact.publicInputs.nullifier_hash, 8, 6)} /> : "—"}</strong>
+            </div>
+            <div className="exec-metric mono">
+              <span>Commitment</span>
+              <strong>{proofArtifact ? <TypingHash text={shorten(proofArtifact.commitment, 8, 6)} /> : "—"}</strong>
+            </div>
+            <div className="exec-metric">
+              <span>Anonymity set</span>
+              <strong><CountUp value={analytics.anonymitySet} format={(n) => formatAmount(Math.round(n))} /></strong>
+            </div>
+            <div className="exec-metric">
+              <span>Proof verifications</span>
+              <strong><CountUp value={analytics.proofVerifications} format={(n) => formatAmount(Math.round(n))} /></strong>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <SettlementStatus />
       <section className="route-control-band page-reveal">
         <SelectField label="Source" onChange={(value) => updateIntent({ source: value as ChainId })} options={chains.map((chain) => [chain.id, chain.name])} value={intent.source} />
@@ -235,13 +386,36 @@ export function OperateExperience() {
 }
 
 export function ProofExperience() {
-  const runtime = usePageMotion();
+  usePageMotion();
   const generateProof = useProtocolStore((state) => state.generateProof);
   const proofArtifact = useProtocolStore((state) => state.proofArtifact);
   const proofSteps = useProtocolStore((state) => state.proofSteps);
   const stealthIdentity = useProtocolStore((state) => state.stealthIdentity);
   const phase = useProtocolStore((state) => state.phase);
   const running = useProtocolStore((state) => state.demoStatus.running);
+
+  const verified = proofArtifact?.bn254Status === "verified";
+  const [burst, setBurst] = useState(0);
+  const [pulse, setPulse] = useState(false);
+  const wasVerified = useRef(false);
+
+  // Generate Proof choreography: the core bursts on click; a success pulse
+  // ripples across the section the moment BN254 verification lands.
+  const runProof = () => {
+    if (running) return;
+    setBurst(1);
+    window.setTimeout(() => setBurst(0), 1500);
+    void generateProof();
+  };
+  useEffect(() => {
+    if (verified && !wasVerified.current) {
+      setPulse(true);
+      window.setTimeout(() => setPulse(false), 1700);
+    }
+    wasVerified.current = verified;
+  }, [verified]);
+
+  const coreIntensity = verified ? 0.9 : running ? 0.72 : 0.42;
 
   return (
     <div className="hq-route proof-route">
@@ -256,10 +430,14 @@ export function ProofExperience() {
           <p className="eyebrow">Stellar Verification Layer</p>
           <h2>{proofArtifact?.bn254Status === "verified" ? "BN254 verified." : "Generate the proof."}</h2>
           <p>Commitment, Merkle root, Groth16 digest, nullifier, destination commitment, and epoch are exposed as public inputs only.</p>
-          <button className="primary-button" onClick={() => void generateProof()} type="button" disabled={running}>
+          <button className="primary-button" onClick={runProof} type="button" disabled={running}>
             {running ? (
               <>
                 <Loader2 className="spin" size={15} /> Generating…
+              </>
+            ) : verified ? (
+              <>
+                <CheckCircle2 size={15} /> Proof verified
               </>
             ) : (
               <>
@@ -269,14 +447,24 @@ export function ProofExperience() {
           </button>
         </div>
         <div className="proof-visual">
-          {runtime.noWebGL ? <Image alt="Cryptographic proof layers" className="asset-fill" priority src={proofGenerationLayers} /> : <ProofEngineScene />}
+          <ProofEngine intensity={coreIntensity} burst={burst} verified={verified} />
+          <div className="proof-hud" aria-hidden="true">
+            <span className="hud-grid" />
+            <span className="hud-corner tl" />
+            <span className="hud-corner tr" />
+            <span className="hud-corner bl" />
+            <span className="hud-corner br" />
+            <span className="hud-scan" />
+            <span className="hud-tag">BN254 · GROTH16 · CAP-0074</span>
+            <span className={running ? "hud-reticle active" : "hud-reticle"} />
+          </div>
         </div>
         <div className="proof-readout">
-          <Signal label="Phase" value={phase} />
-          <Signal label="Commitment" mono value={proofArtifact ? shorten(proofArtifact.commitment) : "pending"} />
-          <Signal label="Merkle root" mono value={proofArtifact ? shorten(proofArtifact.merkleRoot) : "pending"} />
-          <Signal label="Groth16 proof" mono value={proofArtifact ? shorten(proofArtifact.groth16Proof) : "pending"} />
-          <Signal
+          <ReadoutRow label="Phase" value={phase} live={phase !== "idle"} />
+          <ReadoutRow label="Commitment" mono value={proofArtifact ? shorten(proofArtifact.commitment) : "pending"} live={!!proofArtifact} />
+          <ReadoutRow label="Merkle root" mono value={proofArtifact ? shorten(proofArtifact.merkleRoot) : "pending"} live={!!proofArtifact} />
+          <ReadoutRow label="Groth16 proof" mono value={proofArtifact ? shorten(proofArtifact.groth16Proof) : "pending"} live={!!proofArtifact} />
+          <ReadoutRow
             label="On-chain verify"
             mono
             value={
@@ -286,11 +474,18 @@ export function ProofExperience() {
                   : "verified on Stellar"
                 : "run Execute to verify"
             }
+            live={!!proofArtifact?.onChain}
             href={proofArtifact?.onChain?.explorer ?? undefined}
           />
-          <Signal label="Destination commitment" mono value={stealthIdentity ? shorten(stealthIdentity.destinationCommitment) : "pending"} />
-          <Signal label="Nullifier" mono value={stealthIdentity ? shorten(stealthIdentity.nullifierHash) : "pending"} />
+          <ReadoutRow label="Destination commitment" mono value={stealthIdentity ? shorten(stealthIdentity.destinationCommitment) : "pending"} live={!!stealthIdentity} />
+          <ReadoutRow label="Nullifier" mono value={stealthIdentity ? shorten(stealthIdentity.nullifierHash) : "pending"} live={!!stealthIdentity} />
         </div>
+        <span className={pulse ? "proof-pulse show" : "proof-pulse"} aria-hidden="true" />
+        {pulse ? (
+          <div className="proof-verified-flash" role="status">
+            <CheckCircle2 size={16} /> BN254 verification complete
+          </div>
+        ) : null}
       </section>
       <SettlementStatus />
       <section className="proof-lifecycle page-reveal">
@@ -322,37 +517,33 @@ export function ProofExperience() {
 }
 
 export function NetworkExperience() {
-  const runtime = usePageMotion();
-  const phase = useProtocolStore((state) => state.phase);
+  usePageMotion();
   const regions = useProtocolStore((state) => state.regions);
-  const route = useProtocolStore((state) => state.route);
-  const analytics = useProtocolStore((state) => state.analytics);
   const selectedRegionId = useProtocolStore((state) => state.selectedRegionId);
   const selectRegion = useProtocolStore((state) => state.selectRegion);
   const selectedRegion = regions.find((region) => region.id === selectedRegionId) ?? regions[0];
-  const solver = useActiveSolver();
 
   return (
-    <div className={runtime.reducedMotion ? "hq-route network-route reduce-motion" : "hq-route network-route"}>
+    <div className="hq-route network-route">
       <PageHeader
         eyebrow="Global Settlement Network"
         title="Private liquidity, coordinated globally."
-        body="The globe is operational: regions expose settlement volume, privacy activity, and active private settlement routes."
+        body="Regions expose settlement volume, privacy activity, and active private settlement routes coordinated through Stellar."
       />
       <section className="network-stage page-reveal">
-        <div className="network-globe-wrap">
-          <SettlementGlobe3D
-            analytics={analytics}
-            noWebGL={runtime.noWebGL}
-            onSelectRegion={selectRegion}
-            phase={phase}
-            reducedMotion={runtime.reducedMotion}
-            regions={regions}
-            route={route}
-            selectedRegionId={selectedRegionId}
-            solverName={solver.name}
-            variant="network"
-          />
+        <div className="region-grid" role="group" aria-label="Settlement regions">
+          {regions.map((region) => (
+            <button
+              className={region.id === selectedRegionId ? "region-card active" : "region-card"}
+              key={region.id}
+              onClick={() => selectRegion(region.id)}
+              type="button"
+            >
+              <span>{region.label}</span>
+              <strong>{formatUsd(region.volumeUsd)}</strong>
+              <small>{region.activeRoutes} routes · {region.privacyActivity}/100 privacy</small>
+            </button>
+          ))}
         </div>
         <div className="network-control">
           <p className="eyebrow">Region Inspector</p>
@@ -443,8 +634,45 @@ export function SolversExperience() {
   );
 }
 
+const GLOBE_HUBS = ["New York", "London", "Singapore", "Tokyo", "São Paulo", "Frankfurt", "Dubai", "San Francisco", "Sydney", "Mumbai"];
+type LiveEvent = { id: string; timestamp: string; title: string; detail: string; kind: "settle" | "proof" | "commit" };
+
+function randomLiveEvent(): LiveEvent {
+  const a = GLOBE_HUBS[(Math.random() * GLOBE_HUBS.length) | 0];
+  let b = GLOBE_HUBS[(Math.random() * GLOBE_HUBS.length) | 0];
+  if (b === a) b = GLOBE_HUBS[(GLOBE_HUBS.indexOf(b) + 1) % GLOBE_HUBS.length];
+  const roll = Math.random();
+  const hash = Array.from({ length: 6 }, () => "0123456789abcdef"[(Math.random() * 16) | 0]).join("");
+  const kind: LiveEvent["kind"] = roll < 0.4 ? "settle" : roll < 0.72 ? "proof" : "commit";
+  const title = kind === "settle" ? `Settlement finalized · ${a} → ${b}` : kind === "proof" ? "Groth16 proof verified on Stellar" : `Commitment posted · ${a}`;
+  const detail = kind === "settle" ? `Private transfer settled · nullifier 0x${hash}` : kind === "proof" ? `BN254 pairing check passed · 0x${hash}` : `Destination hidden · leaf 0x${hash}`;
+  return { id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, timestamp: "just now", title, detail, kind };
+}
+
+// Deterministic seed rows so server and client render identically (no hydration
+// mismatch); random rows only stream in after mount.
+const FEED_SEED: LiveEvent[] = [
+  { id: "seed-1", timestamp: "just now", title: "Settlement finalized · London → Singapore", detail: "Private transfer settled · nullifier 0x7f3a01", kind: "settle" },
+  { id: "seed-2", timestamp: "3s ago", title: "Groth16 proof verified on Stellar", detail: "BN254 pairing check passed · 0x9c22ab", kind: "proof" },
+  { id: "seed-3", timestamp: "6s ago", title: "Commitment posted · Frankfurt", detail: "Destination hidden · leaf 0x1de904", kind: "commit" },
+  { id: "seed-4", timestamp: "9s ago", title: "Settlement finalized · New York → Tokyo", detail: "Private transfer settled · nullifier 0x44b7c8", kind: "settle" },
+  { id: "seed-5", timestamp: "12s ago", title: "Groth16 proof verified on Stellar", detail: "BN254 pairing check passed · 0x08ef21", kind: "proof" },
+];
+
+/** Synthetic live network feed so the Explorer feels alive before any transfer runs. */
+function useLiveFeed() {
+  const [items, setItems] = useState<LiveEvent[]>(FEED_SEED);
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const id = window.setInterval(() => setItems((prev) => [randomLiveEvent(), ...prev].slice(0, 7)), 2600);
+    return () => window.clearInterval(id);
+  }, []);
+  return items;
+}
+
 export function ExplorerExperience() {
   usePageMotion();
+  const liveFeed = useLiveFeed();
   const analytics = useProtocolStore((state) => state.analytics);
   const events = useProtocolStore((state) => state.events);
   const executeTransfer = useProtocolStore((state) => state.executeTransfer);
@@ -469,89 +697,286 @@ export function ExplorerExperience() {
         body="Deposit, commitment, proof, Stellar verification, and final settlement are visualized as one lifecycle."
       />
       <section className="explorer-theater page-reveal">
-        <Image alt="" className="ops-backplate" src={visionCommandCenter} />
-        <div className="button-row">
-          <button className="primary-button" onClick={() => void executeTransfer()} type="button">
-            <LockKeyhole size={15} /> Execute Transfer
-          </button>
-          <button className="ghost-button" onClick={resetDemo} type="button">
-            <RotateCcw size={15} /> Reset
-          </button>
+        <div className="explorer-globe">
+          <SettlementGlobe active={phase !== "idle" && phase !== "complete"} />
         </div>
-        <div className="settlement-theater" aria-label="End-to-end private settlement flow">
-          {demoSteps.map((step) => (
-            <motion.div animate={{ opacity: statusForPhase(step.id, phase) === "idle" ? 0.38 : 1 }} className={`settlement-step ${statusForPhase(step.id, phase)}`} key={step.id}>
-              <span />
-              <strong>{step.label}</strong>
-              <small>{step.detail}</small>
-            </motion.div>
-          ))}
+        <div className="explorer-globe-label" aria-hidden="true">
+          <span className="live-dot" /> Global settlement network · live
         </div>
-        <div className="completion-strip">
-          <Signal label="Privacy" value={`${analytics.privacyScore}/100`} />
-          <Signal label="Fee" value={`${(analytics.feeBps / 100).toFixed(2)}%`} />
-          <Signal label="Time" value={`${analytics.latencySeconds}s`} />
-          <Signal label="Settlement tx" mono value={proofArtifact ? proofArtifact.settlementTx : "pending"} />
+        <div className="explorer-controls">
+          <div className="button-row">
+            <button className="primary-button" onClick={() => void executeTransfer()} type="button">
+              <LockKeyhole size={15} /> Execute Transfer
+            </button>
+            <button className="ghost-button" onClick={resetDemo} type="button">
+              <RotateCcw size={15} /> Reset
+            </button>
+          </div>
+        </div>
+        <div className="explorer-flow">
+          <div className="settlement-theater" aria-label="End-to-end private settlement flow">
+            {demoSteps.map((step, i) => {
+              const status = statusForPhase(step.id, phase);
+              return (
+                <motion.div animate={{ opacity: status === "idle" ? 0.42 : 1 }} className={`settlement-step ${status}`} key={step.id}>
+                  <span />
+                  <strong>{step.label}</strong>
+                  <small>{step.detail}</small>
+                  {i < demoSteps.length - 1 ? <b className="settlement-connector" aria-hidden="true" /> : null}
+                </motion.div>
+              );
+            })}
+          </div>
+          <div className="completion-strip">
+            <Signal label="Privacy" value={`${analytics.privacyScore}/100`} />
+            <Signal label="Fee" value={`${(analytics.feeBps / 100).toFixed(2)}%`} />
+            <Signal label="Time" value={`${analytics.latencySeconds}s`} />
+            <Signal label="Settlement tx" mono value={proofArtifact ? proofArtifact.settlementTx : "pending"} />
+          </div>
         </div>
       </section>
-      <section className="event-stream page-reveal">
-        {events.length ? (
-          events.map((event) => (
-            <article key={event.id}>
-              <time>{event.timestamp}</time>
-              <strong>{event.title}</strong>
-              <p>{event.detail}</p>
-            </article>
-          ))
-        ) : (
-          <article>
-            <time>ready</time>
-            <strong>Awaiting transfer</strong>
-            <p>Execute the demo to materialize the protocol lifecycle.</p>
-          </article>
-        )}
+      <section className="event-stream page-reveal" aria-label="Live network feed">
+        {(events.length ? events.map((e) => ({ ...e, kind: "settle" as const })) : liveFeed).map((event) => (
+          <motion.article
+            key={event.id}
+            className={`feed-row ${"kind" in event ? event.kind : "settle"}`}
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+          >
+            <span className="feed-dot" aria-hidden="true" />
+            <time>{event.timestamp}</time>
+            <strong>{event.title}</strong>
+            <p>{event.detail}</p>
+          </motion.article>
+        ))}
       </section>
     </div>
   );
 }
 
+const ARCH_NODES = [
+  { icon: Brain, label: "Intent", note: "Natural-language outcome" },
+  { icon: Sparkles, label: "AI Router", note: "Parses & routes privately" },
+  { icon: Network, label: "Solver Network", note: "Liquidity competes" },
+  { icon: Cpu, label: "Proof Engine", note: "Groth16 · BN254" },
+  { icon: ShieldCheck, label: "Stellar", note: "Native verification" },
+  { icon: Wallet, label: "Destination", note: "Funds, unlinked" },
+] as const;
+
+const HQ_MODULES = [
+  { icon: BrainCircuit, name: "AI Router", desc: "Turns a plain-language intent into an optimal private route." },
+  { icon: Store, name: "Solver Market", desc: "Solvers bid on privacy, price, and latency for your flow." },
+  { icon: Cpu, name: "Proof Engine", desc: "Generates real Groth16 proofs over BN254, in your browser." },
+  { icon: ShieldCheck, name: "Settlement Layer", desc: "Stellar verifies the proof on-chain before funds move." },
+  { icon: Scale, name: "Compliance Engine", desc: "Selective disclosure without leaking the transaction graph." },
+  { icon: Compass, name: "Explorer", desc: "Every settlement, provable and auditable end to end." },
+] as const;
+
+const HQ_TIMELINE = [
+  { year: "2025", label: "Research", note: "Private settlement thesis" },
+  { year: "2025", label: "BN254", note: "On-chain pairing verifier" },
+  { year: "2025", label: "Proof Engine", note: "Real Groth16 in-browser" },
+  { year: "2025", label: "AI Router", note: "Intent → private route" },
+  { year: "Next", label: "Mainnet Ready", note: "Institutional pilots" },
+] as const;
+
+const HQ_TECH = [
+  { icon: Cpu, title: "Groth16 / BN254", short: "Succinct zk-SNARK proofs", detail: "Constant-size proofs over the BN254 curve, verified natively on Stellar via CAP-0074 pairing checks." },
+  { icon: Zap, title: "In-browser proving", short: "snarkjs · no server", detail: "Witnesses and proofs are generated client-side. Secrets never leave the device." },
+  { icon: ShieldCheck, title: "Nullifier registry", short: "Double-spend safety", detail: "Each settlement burns a unique nullifier, preventing replay without revealing identity." },
+  { icon: Layers, title: "Stealth addresses", short: "Unlinkable receivers", detail: "One-time destinations bind a commitment and route salt — the receiver is never posted." },
+  { icon: Network, title: "Solver auctions", short: "Competitive routing", detail: "Solvers compete on privacy, route quality, latency, and fee for every intent." },
+  { icon: Activity, title: "Portable proofs", short: "Cross-chain settlement", detail: "A proof from source-chain events becomes a settlement instruction on Stellar." },
+] as const;
+
+/** Deterministic sparkline (stable across SSR/CSR — no random). */
+function Sparkline({ seed }: { seed: number }) {
+  const n = 18;
+  const pts = Array.from({ length: n }, (_, i) => 0.5 + 0.36 * Math.sin(i * 0.55 + seed) + 0.12 * Math.sin(i * 1.7 + seed * 2));
+  const W = 100;
+  const H = 30;
+  const line = pts.map((v, i) => `${((i / (n - 1)) * W).toFixed(1)},${(H - v * H).toFixed(1)}`).join(" ");
+  return (
+    <svg className="hq-spark" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" aria-hidden="true">
+      <polyline points={line} fill="none" stroke="currentColor" strokeWidth="1.6" vectorEffect="non-scaling-stroke" />
+    </svg>
+  );
+}
+
+/** Deterministic base + client-only increment (avoids SSR hydration mismatch). */
+function useTodayCounter(base: number) {
+  const [n, setN] = useState(base);
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const id = window.setInterval(() => setN((v) => v + 1 + Math.floor(Math.random() * 3)), 2800);
+    return () => window.clearInterval(id);
+  }, []);
+  return n;
+}
+
 export function AboutExperience() {
-  const runtime = usePageMotion();
+  usePageMotion();
+  const analytics = useProtocolStore((state) => state.analytics);
+  const solverCount = useProtocolStore((state) => state.solverQuotes.length);
+  const settlementsToday = useTodayCounter(1284);
+
+  const metrics = [
+    { label: "Private settlements today", value: settlementsToday, format: (n: number) => formatAmount(Math.round(n)), seed: 1 },
+    { label: "Proofs generated", value: analytics.proofVerifications, format: (n: number) => formatAmount(Math.round(n)), seed: 2 },
+    { label: "Median latency", value: analytics.latencySeconds, format: (n: number) => `${n.toFixed(1)}s`, seed: 3 },
+    { label: "Available solvers", value: solverCount, format: (n: number) => `${Math.round(n)}`, seed: 4 },
+    { label: "Verification success", value: 99.98, format: (n: number) => `${n.toFixed(2)}%`, seed: 5 },
+    { label: "Settlement value", value: analytics.poolSizeUsd, format: (n: number) => `$${(n / 1_000_000).toFixed(1)}M`, seed: 6 },
+  ];
 
   return (
-    <div className="hq-route about-route">
-      <PageHeader
-        eyebrow="Vision & Architecture"
-        title="A private financial operating system."
-        body="ZeroPath treats Stellar as the private settlement layer: proof verification, nullifier tracking, liquidity accounting, and cross-chain coordination live behind one user outcome."
-      />
-      <section className="vision-panel page-reveal">
-        <Image alt="ZeroPath command center" className="asset-fill" priority src={visionCommandCenter} />
-        <div className="vision-copy">
-          <p className="eyebrow">Digital Headquarters</p>
-          <h2>Infrastructure for private value transfer.</h2>
-          <p>
-            The category is not a bridge. It is settlement infrastructure where solvers compete, routes disappear,
-            proofs travel, and Stellar coordinates finality.
-          </p>
+    <div className="about-hq">
+      {/* SECTION 1 — HERO */}
+      <section className="hq-hero-hq">
+        <div className="hq-hero-hq-copy">
+          <Reveal delay={0}>
+            <p className="hq-kicker"><span className="live-dot" aria-hidden="true" /> ZeroPath Headquarters</p>
+          </Reveal>
+          <Reveal delay={0.08}>
+            <h1>ZeroPath isn&apos;t another bridge.<br /><span className="hq-dim">It is the operating system behind</span> private settlement.</h1>
+          </Reveal>
+          <Reveal delay={0.16}>
+            <p className="hq-lede">A private financial engine: intent in, routed through solver competition and a portable zero-knowledge proof, settled on Stellar — without ever revealing sender, receiver, route, or amount.</p>
+          </Reveal>
+        </div>
+        <Reveal delay={0.12} className="hq-hero-hq-stage">
+          <div className="hq-engine-room">
+            <SettlementEngine intensity={0.6} />
+            <span className="hq-engine-tag" aria-hidden="true">SETTLEMENT ENGINE · LIVE</span>
+          </div>
+        </Reveal>
+      </section>
+
+      {/* SECTION 2 — HOW ZEROPATH THINKS (architecture rail) */}
+      <section className="hq-section">
+        <Reveal><SectionHead eyebrow="How ZeroPath thinks" title="One intent. Six moves. Zero exposure." body="An outcome flows left to right through the protocol — each hop hiding more than the last." /></Reveal>
+        <Reveal delay={0.08}>
+          <div className="hq-rail" role="list">
+            {ARCH_NODES.map((node, i) => {
+              const Icon = node.icon;
+              return (
+                <div className="hq-rail-node" role="listitem" key={node.label}>
+                  <span className="hq-rail-icon"><Icon size={18} /></span>
+                  <strong>{node.label}</strong>
+                  <small>{node.note}</small>
+                  {i < ARCH_NODES.length - 1 ? <span className="hq-rail-link" aria-hidden="true"><b /></span> : null}
+                </div>
+              );
+            })}
+          </div>
+        </Reveal>
+      </section>
+
+      {/* SECTION 3 — INSIDE ZEROPATH (floating glass modules) */}
+      <section className="hq-section">
+        <Reveal><SectionHead eyebrow="Inside ZeroPath" title="Six systems, one protocol." body="Independent modules that compose into a single private settlement fabric." /></Reveal>
+        <div className="hq-modules">
+          {HQ_MODULES.map((mod, i) => {
+            const Icon = mod.icon;
+            return (
+              <Reveal key={mod.name} delay={i * 0.05}>
+                <InteractiveCard className="hq-module">
+                  <span className="hq-module-live" aria-hidden="true" />
+                  <span className="hq-module-icon"><Icon size={20} /></span>
+                  <strong className="hq-module-name">{mod.name}</strong>
+                  <p className="hq-module-desc">{mod.desc}</p>
+                </InteractiveCard>
+              </Reveal>
+            );
+          })}
         </div>
       </section>
-      <section className="architecture-board page-reveal">
-        {[
-          ["Intent Layer", "Users request outcomes, not chains."],
-          ["Solver Layer", "Liquidity finds the optimal private route."],
-          ["Proof Layer", "Groth16 BN254 proofs hide sender, receiver, amount, and route."],
-          ["Stellar Settlement", "BN254 verification, nullifier tracking, and liquidity accounting."],
-        ].map(([title, body]) => (
-          <article key={title}>
-            <h3>{title}</h3>
-            <p>{body}</p>
-          </article>
-        ))}
+
+      {/* SECTION 4 — INFRASTRUCTURE METRICS (ops dashboard) */}
+      <section className="hq-section">
+        <Reveal><SectionHead eyebrow="Infrastructure" title="The network, in real time." body="Live protocol telemetry across proofs, solvers, latency and settled value." /></Reveal>
+        <div className="hq-dash">
+          {metrics.map((m, i) => (
+            <Reveal key={m.label} delay={i * 0.05}>
+              <div className="hq-metric">
+                <span className="hq-metric-label">{m.label}</span>
+                <strong className="hq-metric-value"><CountUp value={m.value} format={m.format} /></strong>
+                <Sparkline seed={m.seed} />
+              </div>
+            </Reveal>
+          ))}
+        </div>
       </section>
-      <section className="about-core page-reveal">
-        {runtime.noWebGL ? <Image alt="Settlement core" className="asset-fill" priority src={heroSettlementCore} /> : <SettlementCoreScene />}
+
+      {/* SECTION 5 — MISSION */}
+      <section className="hq-mission">
+        <Reveal>
+          <p className="hq-kicker center"><span className="live-dot" aria-hidden="true" /> Mission</p>
+          <h2 className="hq-mission-line">
+            The future of finance won&apos;t be public.
+            <br />
+            <span className="hq-accent">It will be provable.</span>
+          </h2>
+        </Reveal>
       </section>
+
+      {/* SECTION 6 — TIMELINE */}
+      <section className="hq-section">
+        <Reveal><SectionHead eyebrow="Trajectory" title="From research to mainnet-ready." /></Reveal>
+        <div className="hq-timeline">
+          <span className="hq-timeline-track" aria-hidden="true" />
+          {HQ_TIMELINE.map((step, i) => (
+            <Reveal key={step.label} delay={i * 0.08} className="hq-timeline-step">
+              <span className="hq-timeline-node" aria-hidden="true" />
+              <span className="hq-timeline-year">{step.year}</span>
+              <strong className="hq-timeline-label">{step.label}</strong>
+              <small className="hq-timeline-note">{step.note}</small>
+            </Reveal>
+          ))}
+        </div>
+      </section>
+
+      {/* SECTION 7 — TECHNOLOGY GRID */}
+      <section className="hq-section">
+        <Reveal><SectionHead eyebrow="Technology" title="What makes it provable." body="The cryptographic machinery behind every private settlement." /></Reveal>
+        <div className="hq-tech-grid">
+          {HQ_TECH.map((tech, i) => {
+            const Icon = tech.icon;
+            return (
+              <Reveal key={tech.title} delay={i * 0.05}>
+                <InteractiveCard className="hq-tech" glow="orange">
+                  <span className="hq-tech-live" aria-hidden="true" />
+                  <span className="hq-tech-icon"><Icon size={18} /></span>
+                  <strong className="hq-tech-title">{tech.title}</strong>
+                  <span className="hq-tech-short">{tech.short}</span>
+                  <p className="hq-tech-detail">{tech.detail}</p>
+                </InteractiveCard>
+              </Reveal>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* SECTION 8 — FOOTER */}
+      <footer className="hq-footer">
+        <Reveal>
+          <div className="hq-footer-top">
+            <span className="hq-footer-mark"><span aria-hidden="true" /> ZeroPath</span>
+            <p>The operating system for private settlement.</p>
+          </div>
+          <div className="hq-footer-links">
+            <Link href="/operate">Operate</Link>
+            <Link href="/proof">Proof</Link>
+            <Link href="/explorer">Explorer</Link>
+            <Link href="/app">Launch App</Link>
+          </div>
+          <div className="hq-footer-legal">
+            <span>Built on Stellar · BN254 · Groth16</span>
+            <span>© 2025 ZeroPath</span>
+          </div>
+        </Reveal>
+      </footer>
     </div>
   );
 }
@@ -567,13 +992,42 @@ function PageHeader({ body, eyebrow, title }: { body: string; eyebrow: string; t
 }
 
 function PathVisual({ routePath }: { routePath: string[] }) {
+  const count = routePath.length;
+  const roleFor = (label: string, index: number) =>
+    label === "Stellar"
+      ? "Private settlement layer"
+      : index === 0
+        ? "Source chain"
+        : index === count - 1
+          ? "Destination chain"
+          : "Relay hop";
+
   return (
-    <div className="path-visual" aria-label="Selected settlement path">
-      {routePath.map((label, index) => (
-        <motion.div animate={{ opacity: 1, y: 0 }} className={label === "Stellar" ? "path-node stellar" : "path-node"} initial={{ opacity: 0.62, y: 8 }} key={`${label}-${index}`} transition={{ delay: index * 0.08 }}>
-          <span>{label}</span>
-        </motion.div>
-      ))}
+    <div className="path-visual" aria-label="Selected settlement path" style={{ ["--path-count" as string]: count }}>
+      {routePath.map((label, index) => {
+        const isStellar = label === "Stellar";
+        const isLast = index === count - 1;
+        return (
+          <motion.div
+            animate={{ opacity: 1, y: 0 }}
+            className={isStellar ? "path-node stellar" : "path-node"}
+            initial={{ opacity: 0.5, y: 12 }}
+            key={`${label}-${index}`}
+            transition={{ delay: index * 0.09, duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+          >
+            <span className="path-node-sheen" aria-hidden="true" />
+            {isStellar ? <span className="path-node-ring" aria-hidden="true" /> : null}
+            <em className="path-role">{roleFor(label, index)}</em>
+            <strong className="path-name">{label}</strong>
+            <span className="path-node-dot" aria-hidden="true" />
+            {!isLast ? (
+              <span className="path-link" aria-hidden="true">
+                <b className="path-link-pulse" />
+              </span>
+            ) : null}
+          </motion.div>
+        );
+      })}
     </div>
   );
 }
@@ -613,6 +1067,26 @@ function Signal({ label, mono, value, href }: { label: string; mono?: boolean; v
         </strong>
       ) : (
         <strong>{value}</strong>
+      )}
+    </div>
+  );
+}
+
+/**
+ * A live status row for the proof readout rail: a state dot (idle → pulsing amber
+ * while pending → solid green once materialized) connected by a vertical rail.
+ */
+function ReadoutRow({ label, value, mono, href, live }: { label: string; value: string; mono?: boolean; href?: string; live?: boolean }) {
+  return (
+    <div className={`readout-row${live ? " live" : ""}${mono ? " mono" : ""}`}>
+      <span className="readout-dot" aria-hidden="true" />
+      <span className="readout-label">{label}</span>
+      {href ? (
+        <strong className="readout-value">
+          <a href={href} target="_blank" rel="noreferrer">{value}</a>
+        </strong>
+      ) : (
+        <strong className="readout-value">{value}</strong>
       )}
     </div>
   );
